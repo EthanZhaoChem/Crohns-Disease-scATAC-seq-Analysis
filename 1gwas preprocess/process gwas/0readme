@@ -1,0 +1,20 @@
+after testing, the deLange gwas is based on hg19 (hg38 gives mostly non-annotated snps)
+cd_build37_40266_20161107_annotated_hg19_b151.vcf is the annotated marker (by chr pos), original SnpSift output, raw file
+cd_build37_40266_20161107_annotated_hg19_b151_gwas_annotated.txt is the annotated gwas to further use, organized and cleaned after vcf output from snpsift
+cd_build37_40266_20161107_hg19_b151_gwas_annotated_filtered_SNVs is filterd for those having 1000G MAF data
+cd_build37_40266_20161107_hg19_b151_gwas_annotated_notFilterFor1KG is only filtered for SNVs, does not consider MAF or 1000G, prepared for torus
+
+##INFO=<ID=NSF,Number=0,Type=Flag,Description="Has non-synonymous frameshift A coding region variation where one allele in the set changes all downstream amino acids. FxnClass = 44">
+
+##INFO=<ID=NSN,Number=0,Type=Flag,Description="Has non-synonymous nonsense A coding region variation where one allele in the set changes to STOP codon (TER). FxnClass = 41">
+
+##INFO=<ID=NSM,Number=0,Type=Flag,Description="Has non-synonymous missense A coding region variation where one allele in the set changes protein peptide. FxnClass = 42">
+
+##INFO=<ID=CDA,Number=0,Type=Flag,Description="Variation is interrogated in a clinical diagnostic assay">
+##INFO=<ID=OTH,Number=0,Type=Flag,Description="Has other variant with exactly the same set of mapped positions on NCBI refernce assembly.">
+##INFO=<ID=S3D,Number=0,Type=Flag,Description="Has 3D structure - SNP3D table">
+
+##INFO=<ID=CAF,Number=.,Type=String,Description="An ordered, comma delimited list of allele frequencies based on 1000Genomes, starting with the reference allele followed by alternate alleles as ordered in the ALT column. Where a 1000Genomes alternate allele is not in the dbSNPs alternate allele set, the allele is added to the ALT column. The minor allele is the second largest value in the list, and was previuosly reported in VCF as the GMAF. This is the GMAF reported on the RefSNP and EntrezSNP pages and VariationReporter">
+
+##INFO=<ID=VC,Number=1,Type=String,Description="Variation Class">
+

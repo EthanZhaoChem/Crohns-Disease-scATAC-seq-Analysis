@@ -1,0 +1,473 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(SNPlocs.Hsapiens.dbSNP150.GRCh38) 
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(BSgenome.Hsapiens.UCSC.hg38)     
+library(BSgenome)
+library(plyr)
+library(dplyr)
+library(stringr)
+library(tibble)
+library(Seurat)
+library(ArchR)
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/'
+```
+
+```{r}
+filename_rds <- paste0('~/yuzhao1/work/atac_gca2024/24rasqual2/1rasqual_results/FDR_results_list.rds')
+FDR_results_list <- readRDS(filename_rds)
+qtls_df <- bind_rows(FDR_results_list)
+qtls_df$chr_pos <- paste0(qtls_df$Chromosome, '_', qtls_df$SNP_position, '_', qtls_df$SNP_position)
+qtls_df <- data.frame(qtls_df)
+qtls_df$qtl <- paste0(qtls_df$Feature_ID, '@', qtls_df$rsID)
+qtls_df <- qtls_df[!duplicated(qtls_df$qtl),]
+```
+
+```{r, include = F, eval=F}
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+gr_cCRE <- proj@peakSet
+```
+
+```{r}
+xx <- unique(qtls_df$chr_pos)
+df_qtl <- data.frame(chr = xx %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,1) %>% as.character(),
+                      start = xx %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric(),
+                      end = xx %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,3) %>% as.numeric())
+gr_qtl <- GRanges(seqnames = df_qtl$chr, ranges = IRanges(start = df_qtl$start, end = df_qtl$end))
+```
+
+```{r}
+library(bumphunter)
+hg38_genes <- annotateTranscripts(TxDb.Hsapiens.UCSC.hg38.knownGene)
+qtl_nearest_annotation <- matchGenes(
+  gr_qtl,
+  hg38_genes,
+  type = "fiveprime",
+  skipExons = F,
+  promoterDist = 2000,
+  verbose = T
+)
+saveRDS(qtl_nearest_annotation, '~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/qtl_nearest_annotation.rds')
+```
+
+```{r}
+# # annotate all snps for a null contrast
+# snps_1kg <- read.table('~/yuzhao1/work/atac_gca2024/19rasqual/3pca/plink_analysis/all_sample_1KGP.bim')
+# xx <- snps_1kg$V2
+# df_1kg <- data.frame(chr = xx %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,1) %>% as.character(),
+#                       start = xx %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric(),
+#                       end = xx %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric())
+# gr_1kg <- GRanges(seqnames = df_1kg $chr, ranges = IRanges(start = df_1kg$start, end = df_1kg$end))
+# hg38_genes <- annotateTranscripts(TxDb.Hsapiens.UCSC.hg38.knownGene)
+# 
+# snps_sampled500k <- sample(gr_1kg, 500000)
+# snps_1kg_nearest_annotation <- matchGenes(
+#   snps_sampled500k,
+#   hg38_genes,
+#   type = "fiveprime",
+#   skipExons = F,
+#   promoterDist = 2000,
+#   verbose = T
+# )
+# 
+# saveRDS(snps_1kg_nearest_annotation, '~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/snps_1kg_nearest_annotation_sample500k.rds')
+```
+
+
+```{r}
+# annotate all snps that were properly tested in rasqual
+library(bumphunter)
+# dir.raw <- '~/yuzhao1/work/atac_gca2024/19rasqual/5collect_results/5results/allPeaks_noDiseaseCo/'
+# celltypes <- readLines('~/yuzhao1/work/atac_gca2024/19rasqual/00celltypes_filtered.txt')
+# snps_rasqualTested <- c()
+# for (ct in celltypes) {
+#   ct.raw <- readRDS(paste0(dir.raw, ct, '.rds'))
+#   tmp.snps <- ct.raw$rsID
+#   snps_rasqualTested <- unique(c(snps_rasqualTested, tmp.snps))
+# }
+# saveRDS(snps_rasqualTested, '~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/snps_rasqualTested.rds')
+
+
+snps_rasqualTested <- readRDS('~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/snps_rasqualTested.rds')
+snps_rasqualTested <- sample(snps_rasqualTested, 1e5)
+xx <- snps_rasqualTested
+df_snps_rasqualTested <- data.frame(chr = xx %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,1) %>% as.character(),
+                      start = xx %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric(),
+                      end = xx %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric())
+gr_snps_rasqualTested <- GRanges(seqnames = df_snps_rasqualTested$chr, 
+                                 ranges = IRanges(start = df_snps_rasqualTested$start, end = df_snps_rasqualTested$end))
+hg38_genes <- annotateTranscripts(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+snps_rasqualTested_nearest_annotation <- matchGenes(
+  gr_snps_rasqualTested,
+  hg38_genes,
+  type = "fiveprime",
+  skipExons = F,
+  promoterDist = 2000,
+  verbose = T
+)
+
+saveRDS(snps_rasqualTested_nearest_annotation, '~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/snps_rasqualTested_nearest_annotation_sample100k.rds')
+```
+
+
+# Q1: Proportion of SNPs in different regions
+
+# 1.1
+```{r}
+qtl_nearest_annotation <- readRDS('~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/qtl_nearest_annotation.rds')
+
+qtl_nearest_annotation$description <- as.character(qtl_nearest_annotation$description)
+qtl_nearest_annotation$UTR <- as.character(qtl_nearest_annotation$UTR)
+
+qtl_nearest_annotation$description[qtl_nearest_annotation$description %in% c('promoter')] <- 'Promoter'
+qtl_nearest_annotation$description[qtl_nearest_annotation$description %in% c('inside intron')] <- 'Intronic'
+qtl_nearest_annotation$description[qtl_nearest_annotation$description %in% c('inside exon')] <- 'Exonic'
+qtl_nearest_annotation$description[qtl_nearest_annotation$description %in% c("close to 3'", "upstream", "downstream")] <- 'Intergenic'
+qtl_nearest_annotation$description[qtl_nearest_annotation$UTR %in% c("5' UTR", "3'UTR")] <- 'UTR'
+qtl_nearest_annotation$description[qtl_nearest_annotation$description=='Intergenic' & qtl_nearest_annotation$distance <= 5000] <- 'Intergenic Proximal'
+qtl_nearest_annotation$description[qtl_nearest_annotation$description=='Intergenic' & qtl_nearest_annotation$distance > 5000] <- 'Intergenic Distal'
+
+# piegram for snp location
+data <- data.frame(table(qtl_nearest_annotation$description))
+colnames(data) <- c('snpType', 'Quantity')
+
+# Compute the position of labels
+data <- data %>% 
+  arrange(desc(snpType)) %>%
+  mutate(prop = Quantity / sum(data$Quantity) *100) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+# Basic piechart
+pdf(paste0(out.dir, 'QTL_lead_Pie', '.pdf'), width = 6, height = 7, pointsize = 1)
+ggplot(data, aes(x="", y=prop, fill=snpType)) +
+  geom_bar(stat="identity", width=1, color="black") +
+  coord_polar("y", start=0) +
+  theme_void() + 
+  theme(legend.position="bottom",
+        legend.text=element_text(size=12),
+        legend.title=element_text(size=12, face="bold")) +
+  geom_text_repel(aes(y = ypos, label = snpType), color = "black", size=8) +
+  scale_fill_manual(values = gca_colors_snpType)
+dev.off()
+write.csv(data, paste0(out.dir, 'QTL_lead_Pie.csv'))
+
+```
+
+# 1.2
+```{r}
+snps_1kg_nearest_annotation <- readRDS('~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/snps_1kg_nearest_annotation_sample500k.rds')
+
+snps_1kg_nearest_annotation$description <- as.character(snps_1kg_nearest_annotation$description)
+snps_1kg_nearest_annotation$UTR <- as.character(snps_1kg_nearest_annotation$UTR)
+
+snps_1kg_nearest_annotation$description[snps_1kg_nearest_annotation$description %in% c('promoter')] <- 'Promoter'
+snps_1kg_nearest_annotation$description[snps_1kg_nearest_annotation$description %in% c('inside intron')] <- 'Intronic'
+snps_1kg_nearest_annotation$description[snps_1kg_nearest_annotation$description %in% c('inside exon')] <- 'Exonic'
+snps_1kg_nearest_annotation$description[snps_1kg_nearest_annotation$description %in% c("close to 3'", "upstream", "downstream")] <- 'Intergenic'
+snps_1kg_nearest_annotation$description[snps_1kg_nearest_annotation$UTR %in% c("5' UTR", "3'UTR")] <- 'UTR'
+snps_1kg_nearest_annotation$description[snps_1kg_nearest_annotation$description=='Intergenic' & snps_1kg_nearest_annotation$distance <= 5000] <- 'Intergenic Proximal'
+snps_1kg_nearest_annotation$description[snps_1kg_nearest_annotation$description=='Intergenic' & snps_1kg_nearest_annotation$distance > 5000] <- 'Intergenic Distal'
+
+# piegram for snp location
+data <- data.frame(table(snps_1kg_nearest_annotation$description))
+colnames(data) <- c('snpType', 'Quantity')
+
+# Compute the position of labels
+data <- data %>% 
+  arrange(desc(snpType)) %>%
+  mutate(prop = Quantity / sum(data$Quantity) *100) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+# Basic piechart
+pdf(paste0(out.dir, 'snps_1kg_Pie_sample500k', '.pdf'), width = 6, height = 7, pointsize = 1)
+ggplot(data, aes(x="", y=prop, fill=snpType)) +
+  geom_bar(stat="identity", width=1, color="black") +
+  coord_polar("y", start=0) +
+  theme_void() + 
+  theme(legend.position="bottom",
+        legend.text=element_text(size=12),
+        legend.title=element_text(size=12, face="bold")) +
+  geom_text_repel(aes(y = ypos, label = snpType), color = "black", size=8) +
+  scale_fill_manual(values = gca_colors_snpType)
+dev.off()
+write.csv(data, paste0(out.dir, 'snps_1kg_nearest_annotation_sample500k.csv'))
+```
+
+# 1.3
+```{r}
+snps_rasqualTested_nearest_annotation <- readRDS('~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/snps_rasqualTested_nearest_annotation_sample100k.rds')
+
+snps_rasqualTested_nearest_annotation$description <- as.character(snps_rasqualTested_nearest_annotation$description)
+snps_rasqualTested_nearest_annotation$UTR <- as.character(snps_rasqualTested_nearest_annotation$UTR)
+
+snps_rasqualTested_nearest_annotation$description[snps_rasqualTested_nearest_annotation$description %in% c('promoter')] <- 'Promoter'
+snps_rasqualTested_nearest_annotation$description[snps_rasqualTested_nearest_annotation$description %in% c('inside intron')] <- 'Intronic'
+snps_rasqualTested_nearest_annotation$description[snps_rasqualTested_nearest_annotation$description %in% c('inside exon')] <- 'Exonic'
+snps_rasqualTested_nearest_annotation$description[snps_rasqualTested_nearest_annotation$description %in% c("close to 3'", "upstream", "downstream")] <- 'Intergenic'
+snps_rasqualTested_nearest_annotation$description[snps_rasqualTested_nearest_annotation$UTR %in% c("5' UTR", "3'UTR")] <- 'UTR'
+snps_rasqualTested_nearest_annotation$description[snps_rasqualTested_nearest_annotation$description=='Intergenic' & snps_rasqualTested_nearest_annotation$distance <= 5000] <- 'Intergenic Proximal'
+snps_rasqualTested_nearest_annotation$description[snps_rasqualTested_nearest_annotation$description=='Intergenic' & snps_rasqualTested_nearest_annotation$distance > 5000] <- 'Intergenic Distal'
+
+# piegram for snp location
+data <- data.frame(table(snps_rasqualTested_nearest_annotation$description))
+colnames(data) <- c('snpType', 'Quantity')
+
+# Compute the position of labels
+data <- data %>% 
+  arrange(desc(snpType)) %>%
+  mutate(prop = Quantity / sum(data$Quantity) *100) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+# Basic piechart
+pdf(paste0(out.dir, 'snps_rasqualTested_Pie_sample100k', '.pdf'), width = 6, height = 7, pointsize = 1)
+ggplot(data, aes(x="", y=prop, fill=snpType)) +
+  geom_bar(stat="identity", width=1, color="black") +
+  coord_polar("y", start=0) +
+  theme_void() + 
+  theme(legend.position="bottom",
+        legend.text=element_text(size=12),
+        legend.title=element_text(size=12, face="bold")) +
+  geom_text_repel(aes(y = ypos, label = snpType), color = "black", size=8) +
+  scale_fill_manual(values = gca_colors_snpType)
+dev.off()
+write.csv(data, paste0(out.dir, 'snps_rasqualTested_nearest_annotation_sample100k.csv'))
+```
+
+# 1.4
+```{r}
+custom_colors <- c("rasqualTest" = "#4DBBD5FF", "QTL" = "#fb8072")
+df1 <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/QTL_lead_Pie.csv', row.names = 1)
+df2 <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part1/snps_rasqualTested_nearest_annotation_sample100k.csv', row.names = 1)
+df1$type <- 'QTL'
+df2$type <- 'rasqualTest'
+df <- bind_rows(df1, df2)
+df <- df[, c( "snpType", "prop", "type" )]
+df$type <- factor(df$type, levels = c('QTL', 'rasqualTest'))
+df$snpType <- factor(df$snpType, levels = c("Promoter", "Exonic", "UTR", "Intronic", "Intergenic Proximal", "Intergenic Distal"))
+df$prop <- df$prop %>% format(., digits=2) %>% as.numeric()
+
+pdf(paste0(out.dir, 'snps_type_bar.pdf', '.pdf'), width = 9, height = 7, pointsize = 1)
+ggplot(df, aes(x=snpType, y=prop, fill=type)) +
+  geom_bar(stat = "identity", position = position_dodge(), color='black', width = 0.6) + 
+  geom_text(aes(label = prop), vjust = -0.3,  position=position_dodge(0.6))+
+  scale_fill_manual(values = custom_colors) +
+  theme(axis.text.x = element_text(color = "black", size = 5, angle=45, hjust = 1, vjust = 1),
+    axis.text.y = element_text(color = "black", size = 5),
+    axis.title = element_text(color = "black", size = 5, angle = 0),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),     
+    panel.background = element_rect(fill = "white",
+                                    colour = "black",
+                                    size = 1, linetype = "solid"), 
+    legend.title = element_blank(),
+	  legend.text = element_text(size=8),
+	  legend.position = "bottom",)+
+  labs(x = "", y = "Proportion", title = "")
+dev.off()
+
+
+```
+
+
+# Q2: Distance of lead SNPs and caPeaks to 5' (separate for SNP and caPeaks)
+
+```{r}
+# SNP to gene, density
+p <- ggplot(qtl_nearest_annotation, aes(x=distance)) +
+  geom_density(alpha = 0.6, color ='#00adef', size = 1.5, n=20) +
+  scale_x_continuous(limits = c(0, 100000))+
+  theme_pubr()+
+  theme(axis.text.y = element_text(size=8),
+  	  axis.text.x = element_text(size=8),
+  	  axis.title = element_text(size=8),
+  	  legend.title = element_blank(),
+  	  legend.text = element_text(size=8),
+  	  legend.position = "bottom",
+  	  plot.margin = margin(1,1,1,1,'cm'),
+  	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+  labs(title = "",
+       x = "QTL_snp_gene_distance",
+       y = "PDF")
+
+pdf(paste0(out.dir, 'QTL_snp_gene_distance_density', '.pdf'), width = 3, height = 4, pointsize = 1)
+print(p)
+dev.off()
+```
+
+```{r}
+# caPeakto gene, density
+df <- data.frame(gr_cCRE)
+rownames(df) <- paste0(df$seqnames, '_', df$start, '_', df$end)
+df <- df[unique(qtls_df$Feature_ID),]
+
+p <- ggplot(df, aes(x=distToTSS)) +
+  geom_density(alpha = 0.6, color ='#00adef', size = 1.5, n=20) +
+  scale_x_continuous(limits = c(0, 100000))+
+  theme_pubr()+
+  theme(axis.text.y = element_text(size=8),
+  	  axis.text.x = element_text(size=8),
+  	  axis.title = element_text(size=8),
+  	  legend.title = element_blank(),
+  	  legend.text = element_text(size=8),
+  	  legend.position = "bottom",
+  	  plot.margin = margin(1,1,1,1,'cm'),
+  	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+  labs(title = "",
+       x = "caPeak_gene_distance",
+       y = "PDF")
+
+
+pdf(paste0(out.dir, 'caPeak_gene_distance_density', '.pdf'), width = 3, height = 4, pointsize = 1)
+print(p)
+dev.off()
+```
+
+
+# Q3: Distance of lead SNPs to caPeak
+
+```{r}
+caPeaks <- qtls_df$Feature_ID
+caPeaks_start <- caPeaks %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric()
+caPeaks_end <- caPeaks %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,3) %>% as.numeric()
+caPeaks_center <- (caPeaks_start + caPeaks_end)/2
+snps_pos <- qtls_df$SNP_position %>% as.numeric()
+
+df <- data.frame(distance=  snps_pos - caPeaks_center)
+```
+
+```{r}
+# density
+p <- ggplot(df, aes(x=distance)) +
+  geom_density(alpha = 0.6, color ='#00adef', size = 1.5, n=10000) +
+  scale_x_continuous(limits = c(-1000, 1000)) + 
+  theme_pubr()+
+  theme(axis.text.y = element_text(size=8),
+  	  axis.text.x = element_text(size=8),
+  	  axis.title = element_text(size=8),
+  	  legend.title = element_blank(),
+  	  legend.text = element_text(size=8),
+  	  legend.position = "bottom",
+  	  plot.margin = margin(1,1,1,1,'cm'),
+  	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+  labs(title = "",
+       x = "realative position of lead SNP and caPeak center",
+       y = "Density distribution")
+
+pdf(paste0(out.dir, 'snp_to_caPeak_center_density', '.pdf'), width = 4, height = 3, pointsize = 1)
+print(p)
+dev.off()
+```
+
+
+# Q4: peak conservation score
+
+```{r}
+phastCons_scores <- read.table('~/yuzhao1/work/atac_gca2024/23conservation/phastCons_scores.txt', sep = '\t')
+rownames(phastCons_scores) <- paste0(phastCons_scores$V1, '_', phastCons_scores$V2, '_', phastCons_scores$V3)
+
+xx <- phastCons_scores[!rownames(phastCons_scores) %in% unique(qtls_df$Feature_ID), 'V4']
+vector1 <- xx[!is.na(xx)]
+mean(vector1)
+
+xx <- phastCons_scores[unique(qtls_df$Feature_ID), 'V4']
+vector2<- xx[!is.na(xx)]
+mean(vector2)
+```
+
+```{r}
+# Create a data frame
+vector1 <- sample(vector1, size = length(vector2))
+data <- data.frame(
+  value = c(vector1, vector2),
+  group = factor(c(rep("non-caPeaks", length(vector1)), rep("caPeaks", length(vector2))))
+)
+data$group <- factor(data$group, levels = c("caPeaks", "non-caPeaks"))
+
+custom_colors <- c("non-caPeaks" = "#fef200", "caPeaks" = "#00adef")
+```
+
+```{r}
+# Density plot
+p <- ggplot(data, aes(x = value, fill = group)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = custom_colors) +
+  theme_pubr()+
+  theme(axis.text.y = element_text(size=8),
+  	  axis.text.x = element_text(size=8),
+  	  axis.title = element_text(size=8),
+  	  legend.title = element_blank(),
+  	  legend.text = element_text(size=8),
+  	  legend.position = "bottom",
+  	  plot.margin = margin(1,1,1,1,'cm'),
+  	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+  labs(title = "Density",
+       x = "Conservation score",
+       y = "")
+
+pdf(paste0(out.dir, 'Conservation score', 'density_plot.pdf'), width = 4, height = 3.6, pointsize = 1)
+print(p)
+dev.off()
+
+```
+
+```{r}
+# box plot
+my_comparisons <- list(c('non-caPeaks', 'caPeaks'))
+p <- ggboxplot(data, x = "group", y = "value", fill = "group", outlier.shape = NA, 
+          bxp.errorbar=T, bxp.errorbar.width = 0.2)+ 
+  scale_y_continuous(limits = c(0, 0.6)) +
+  scale_fill_manual(values = custom_colors) +
+  stat_compare_means(value ~ group, 
+                     comparisons = my_comparisons,
+                     label.y = c(0.45, 0.55, 0.65),
+                     label = "p.signif",                    
+                     method = "wilcox.test",
+                     paired = F)+
+  theme(axis.text.x = element_text(color = "black", face = "bold", size = 8,),
+        axis.text.y = element_text(color = "black", size = 8, face = "bold"),
+        axis.title = element_text(color = "black", size = 8, angle = 0, face = "bold"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),      
+        legend.position = "none",
+        panel.background = element_rect(fill = "white",
+                                        colour = "black",
+                                        size = 1, linetype = "solid")
+  )+
+  labs(x = "Peak Group", y = "Conservation score", title = "")
+
+pdf(paste0(out.dir, 'Conservation score', '_boxplot.pdf'), width = 2.6, height = 3, pointsize = 1)
+print(p)
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

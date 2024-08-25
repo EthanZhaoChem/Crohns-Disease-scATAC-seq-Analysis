@@ -1,0 +1,96 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(plyr)
+library(dplyr)
+library(stringr)
+library(tibble)
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part3/'
+```
+
+```{r, include = F, eval=F}
+celltypes <- readLines('~/yuzhao1/work/atac_gca2024/19rasqual/00celltypes_filtered.txt')
+FDR_results_list <- readRDS('~/yuzhao1/work/atac_gca2024/24rasqual2/1rasqual_results/FDR_results_list.rds')
+qtls_rasqual <- bind_rows(FDR_results_list, .id = 'celltype') %>% as.data.frame()
+qtls_rasqual$peak_snp <- paste0(qtls_rasqual$Feature_ID, '@', qtls_rasqual$rsID)
+qtls_ctList <- list()
+for (ct in celltypes) {
+  qtls_ctList[[ct]] <- qtls_rasqual$peak_snp[qtls_rasqual$celltype==ct]
+}
+qtls_ctList_rasqual <- qtls_ctList
+rm(qtls_ctList)
+```
+
+```{r}
+lfsr_threshold <- 0.05
+df_lfsr <- readRDS('~/yuzhao1/work/atac_gca2024/26mash3/2mash/df_lfsr.rds')
+qtls_ctList <- list()
+for (ct in celltypes) {
+  qtls_ctList[[ct]] <- rownames(df_lfsr)[df_lfsr[, ct] <= lfsr_threshold]
+}
+qtls_ctList_mash <- qtls_ctList
+rm(qtls_ctList)
+```
+
+```{r}
+df_list <- list()
+bar_height <- setNames(rep(0, length(celltypes)), celltypes)
+for (ct in celltypes) {
+  
+  pairs_rasqual <- qtls_ctList_rasqual[[ct]]
+  peaks_rasqual <- pairs_rasqual %>% strsplit(split = '@', fixed=T) %>% sapply(.,`[[`,1)
+  pairs_mash <- qtls_ctList_mash[[ct]]
+  peaks_mash <- pairs_mash %>% strsplit(split = '@', fixed=T) %>% sapply(.,`[[`,1)
+  
+  n_shared <- length(unique(intersect(peaks_rasqual, peaks_mash)))
+  n_rasqual_only <- length(unique(setdiff(peaks_rasqual, peaks_mash)))
+  n_mash_only <- length(unique(setdiff(peaks_mash, peaks_rasqual)))
+  df <- data.frame(group = c('shared', 'rasqual_only', 'mash_only'),
+                   n = c(n_shared, n_rasqual_only, n_mash_only))
+  df_list[[ct]] <- df
+  bar_height[[ct]] <- length(union(peaks_rasqual, peaks_mash))
+}
+df_plot <- bind_rows(df_list, .id = 'celltype') %>% as.data.frame()
+df_plot$celltype <- factor(df_plot$celltype, levels = names(sort(bar_height, decreasing = T)))
+df_plot$group <- factor(df_plot$group, levels = c("mash_only", "rasqual_only", "shared"))
+
+```
+
+```{r}
+p <- ggplot(df_plot, aes(x = celltype, y = n, fill = group)) +
+  geom_bar(position = "stack", stat = "identity", width = 0.72)+
+  scale_fill_manual(values = c("#d6604d", "#4DBBD5FF", "#00A087FF", "#8073ac"))+
+  theme_pubr()+
+  theme(axis.text.y = element_text(size=15),
+        axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+        axis.title = element_text(size=20),
+        legend.title = element_text(size=13),
+        legend.text = element_text(size=13),
+        legend.position = "bottom",
+        plot.title = element_text(size=20, hjust=0.5, face = 'bold'))+
+  labs(title = "", y = "# caPeaks", x = "", fill = "")+
+  guides(fill=guide_legend(title="# shared celltypes"))
+
+pdf(paste0(out.dir, 'peaks.pdf'), width = 7, height = 6)
+print(p)
+dev.off()
+
+```
+
+
+
+
+
+
+
+
+
+
+

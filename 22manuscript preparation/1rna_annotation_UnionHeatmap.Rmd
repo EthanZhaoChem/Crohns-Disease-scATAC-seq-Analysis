@@ -1,0 +1,168 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/final_GCAatac/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/final_GCAatac/0manu/plots/1rna_annotation_UnionHeatmap/'
+```
+
+
+```{r, include = F, eval=F}
+union <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/gca_combined_final.rds')
+epithelial <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/epithelial4.rds')
+immune <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/immune3.rds')
+stromal <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/stromal2.rds')
+```
+
+###################### 1. Annotation dot plot ########################
+
+```{r}
+markers <- list()
+top10 <- list()
+```
+
+### calculation
+
+```{r}
+lineage <- 'stromal'
+seurat <- lineage %>% as.name(.) %>% eval(.)
+Idents(seurat) <- seurat$anno1
+markers[[lineage]] <- FindAllMarkers(seurat, only.pos = TRUE, min.pct = 0.5, logfc.threshold = 1)
+
+markers[[lineage]] %>%
+    group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10[[lineage]]
+```
+
+```{r}
+lineage <- 'immune'
+seurat <- lineage %>% as.name(.) %>% eval(.)
+Idents(seurat) <- seurat$anno1
+markers[[lineage]] <- FindAllMarkers(seurat, only.pos = TRUE, min.pct = 0.5, logfc.threshold = 1)
+
+markers[[lineage]] %>%
+    group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10[[lineage]]
+```
+
+```{r}
+lineage <- 'epithelial'
+seurat <- lineage %>% as.name(.) %>% eval(.)
+Idents(seurat) <- seurat$anno1
+markers[[lineage]] <- FindAllMarkers(seurat, only.pos = TRUE, min.pct = 0.5, logfc.threshold = 1)
+
+markers[[lineage]] %>%
+    group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10[[lineage]]
+```
+
+```{r}
+saveRDS(markers, paste0(out.dir, 'markers.rds'))
+saveRDS(top10, paste0(out.dir, 'top10.rds'))
+```
+
+
+### make complex heatmap
+
+```{r}
+markers <- readRDS(paste0(out.dir, 'markers.rds'))
+top10 <- readRDS(paste0(out.dir, 'top10.rds'))
+```
+
+
+```{r}
+anno1.order <- names(gca.rna.unionHeatmap.markers)
+
+top10_combined <- do.call(rbind, top10)
+genes <- list()
+for (anno1 in anno1.order) {
+  genes[[anno1]] <- top10_combined$gene[which(top10_combined$cluster==anno1)]
+}
+
+genes[['CD103+ CD8']] <- c('ITGAE', genes[['CD103+ CD8']])
+genes[['KLRG1+ CD8']] <- c('KLRG1', genes[['KLRG1+ CD8']])
+genes[['GC B']] <- c('BCL6', genes[['GC B']])
+genes[['Memory B']] <- c('CD27', genes[['Memory B']])
+genes[['Neutrophil']] <- c('FCGR3B', genes[['Neutrophil']])
+genes <- genes[anno1.order]
+genes <- unique(genes %>% unlist())
+```
+
+
+```{r}
+Average.expression.mtx <- AverageExpression(
+  union,
+  assays = 'RNA',
+  features = genes,
+  return.seurat = FALSE,
+  group.by = "anno1",
+  add.ident = NULL,
+  slot = "data",
+  verbose = TRUE
+)
+Average.expression.mtx <- Average.expression.mtx$RNA %>% t(.) %>% scale(.) %>% t(.)
+Average.expression.mtx <- Average.expression.mtx[, anno1.order]
+```
+
+
+```{r, fig.height=15, fig.width=4}
+library(ComplexHeatmap)
+library(RColorBrewer)
+# show some labels in labels of heatmap
+labels <- gca.rna.unionHeatmap.markers %>% unlist()
+labels.idx <- match(labels, rownames(Average.expression.mtx))
+
+length(manual_colors_gradient3)
+# col_fun = colorRamp2(seq(-2, 9, by = 11/9), manual_colors_gradient3)
+col_fun = colorRamp2(seq(-2, 10, by = 12/10), gca_heatmap_colors_gradient1[2:12])
+# col_fun = colorRamp2(seq(-2, 8, by = 10/13), c(rep('white', 4), manual_colors_gradient3))
+
+pdf(paste0(out.dir, 'RNA_heatmap_', '_union.pdf'), width = 8, height = 8)
+p1 <- Heatmap(Average.expression.mtx, 
+              column_split = factor(c(rep('epithelial', length(top10$epithelial$cluster %>% unique())),
+                                    rep('immune', length(top10$immune$cluster %>% unique())),
+                                    rep('stromal', length(top10$stromal$cluster %>% unique()))),
+                                    levels = c('epithelial', 'immune', 'stromal')),
+              column_title = NULL,
+              row_gap = unit(0, "mm"), column_gap = unit(0, "mm"), 
+              border = T,
+              border_gp = gpar(col = "black", lty = 1, lwd = 1),
+              
+              col = gca_heatmap_colors_gradient1, 
+              cluster_columns = F, show_column_dend = F,
+              column_names_gp = gpar(fontsize = 8),
+              cluster_rows = F, show_row_dend = F, 
+              show_row_names = F,
+              heatmap_legend_param = list(title = "Mean expression z score"),
+              use_raster = F)+
+  rowAnnotation(link = anno_mark(at = labels.idx, labels = labels, labels_gp = gpar(col = "black", fontsize = 6)), 
+                width = unit(0.1, "cm") + 
+                max_text_width(labels))
+
+print(p1)
+dev.off()
+```
+
+
+
+
+
+
+
+

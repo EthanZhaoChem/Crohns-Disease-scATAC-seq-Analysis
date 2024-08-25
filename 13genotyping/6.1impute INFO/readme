@@ -1,0 +1,8 @@
+bcftools +impute-info ../3.5merge/allPatients.vcf.gz -o allPatients_info.vcf
+bgzip -c allPatients_info.vcf > allPatients_info.vcf.gz
+tabix -p vcf allPatients_info.vcf.gz
+
+bcftools annotate -Oz -o allPatients_info_updatedID.vcf.gz -x ID  --set-id +'%CHROM\:%POS\:%REF\:%ALT' allPatients_info.vcf.gz
+tabix -p vcf allPatients_info_updatedID.vcf.gz
+
+

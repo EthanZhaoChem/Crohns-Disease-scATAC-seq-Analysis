@@ -1,0 +1,186 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(BSgenome)
+library(plyr)
+library(dplyr)
+library(stringr)
+library(tibble)
+library(Seurat)
+library(ArchR)
+library(reshape2)
+
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/8QTL_summary_part2/'
+```
+
+```{r, include = F, eval=F}
+filename_rds <- paste0('~/yuzhao1/work/atac_gca2024/24rasqual2/1rasqual_results/FDR_results_list.rds')
+FDR_results_list <- readRDS(filename_rds)
+qtls_df <- bind_rows(FDR_results_list)
+qtls_df$chr_pos <- paste0(qtls_df$Chromosome, '_', qtls_df$SNP_position, '_', qtls_df$SNP_position)
+qtls_df <- data.frame(qtls_df)
+qtls_df$qtl <- paste0(qtls_df$Feature_ID, '@', qtls_df$rsID)
+qtls_df <- qtls_df[!duplicated(qtls_df$qtl),]
+```
+
+```{r, include = F, eval=F}
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+```
+
+```{r}
+peakset <- data.frame(proj@peakSet)
+peakset$score %<>% as.numeric()
+rownames(peakset) <- paste0(peakset$seqnames, '_', peakset$start, '_', peakset$end)
+peakset$flag_caPeak <- 'non-caPeaks'
+peakset$flag_caPeak[rownames(peakset) %in% qtls_df$Feature_ID] <- 'caPeaks'
+custom_colors <- c("non-caPeaks" = "#fef200", "caPeaks" = "#00adef")
+peakset$flag_caPeak <- factor(peakset$flag_caPeak, levels = c("caPeaks", "non-caPeaks"))
+```
+
+# 1. peak score
+
+```{r}
+# box plot
+my_comparisons <- list(c('non-caPeaks', 'caPeaks'))
+p <- ggboxplot(peakset, x = "flag_caPeak", y = "score", fill = "flag_caPeak", outlier.shape = NA, 
+               bxp.errorbar=T, bxp.errorbar.width = 0.2)+ 
+  scale_y_continuous(limits = c(0, 350)) +
+  scale_fill_manual(values = custom_colors) +
+  stat_compare_means(score ~ flag_caPeak,
+                     comparisons = my_comparisons,
+                     label.y = 200,
+                     label = "p.signif",
+                     method = "wilcox.test",
+                     paired = F)+
+  theme(axis.text.x = element_text(color = "black", face = "bold", size = 8,),
+        axis.text.y = element_text(color = "black", size = 8, face = "bold"),
+        axis.title = element_text(color = "black", size = 8, angle = 0, face = "bold"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),        
+        legend.position = "none",
+        panel.background = element_rect(fill = "white",
+                                        colour = "black",
+                                        size = 1, linetype = "solid")
+  )+
+  labs(x = "Peak Group", y = "Peak score", title = "")
+
+pdf(paste0(out.dir, 'Peak score', '_boxplot.pdf'), width = 2.6, height = 3, pointsize = 1)
+print(p)
+dev.off()
+```
+
+```{r}
+# Density plot
+p <- ggplot(peakset, aes(x = score, fill = flag_caPeak)) +
+  geom_density(alpha = 0.6) +
+  scale_x_continuous(limits = c(0, 200)) +
+  scale_fill_manual(values = custom_colors) +
+  theme_pubr()+
+  theme(axis.text.y = element_text(size=8),
+  	  axis.text.x = element_text(size=8),
+  	  axis.title = element_text(size=8),
+  	  legend.title = element_blank(),
+  	  legend.text = element_text(size=8),
+  	  legend.position = "bottom",
+  	  plot.margin = margin(1,1,1,1,'cm'),
+  	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+  labs(title = "Density",
+       x = "Peak score",
+       y = "")
+
+pdf(paste0(out.dir, 'Peak score', '_density_plot.pdf'), width = 4, height = 3.6, pointsize = 1)
+print(p)
+dev.off()
+```
+
+# 2. cell type specificity
+
+```{r}
+peaks_anno1_df <- readRDS('~/yuzhao1/work/atac_gca2024/4peaks/DARs/healthy_union_anno1_peaks/FDR0_1FC0_5_peak_cellType_table.rds')
+peakset$flag_ctSpecific <- 'not-celltype specific'
+peakset$flag_ctSpecific[rownames(peakset) %in% peaks_anno1_df$peak] <- 'celltype specific'
+```
+
+```{r}
+confusionMatrix(peakset$flag_caPeak, peakset$flag_ctSpecific)
+```
+
+
+```{r}
+df <- as.data.frame(matrix(c(17302, 6846, 343436, 189726), nrow = 2, byrow = TRUE))
+for(i in 1:2){
+  df[i,] <- df[i,]/sum(df[i,])
+}
+rownames(df) <- c('caPeaks', 'non-caPeaks')
+colnames(df) <- c('celltype specific', 'not-celltype specific')
+df$peak <- rownames(df)
+library(tidyr)
+df_long <- df %>%
+  pivot_longer(
+    cols = -peak,          # Specify columns to keep
+    names_to = "Variable",  # Name of the new column that will contain the old column names
+    values_to = "Value"    # Name of the new column that will contain the values
+  )
+df_long
+```
+
+
+```{r}
+df_long$Variable <- factor(df_long$Variable, levels = c("not-celltype specific", "celltype specific"))
+p <- ggplot(df_long, aes(x = peak, y=Value, fill = Variable)) +
+  scale_fill_manual(values = c('celltype specific' = '#f46d43', 'not-celltype specific' = '#91D1C2FF'))+
+    geom_bar(stat = "identity", width = 0.6, size = 0.2, color="black") +
+    theme_pubr()+
+    theme(axis.text.y = element_text(size=8),
+    	  axis.text.x = element_text(size=8),
+    	  axis.title = element_text(size=8),
+    	  legend.title = element_blank(),
+    	  legend.text = element_text(size=8),
+    	  legend.position = "bottom",
+    	  plot.margin = margin(1,1,1,1,'cm'),
+    	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+    labs(title = '72% vs 64%', x = "", y = "")+
+    guides(fill = guide_legend(nrow = 2))
+pdf(paste0(out.dir, 'peakType_vs_cellTypeSpecificity_barplot.pdf'), width = 3, height = 3.6, pointsize = 1)
+print(p)
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,90 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Repitools)
+library(readxl)  
+library(ComplexHeatmap)
+library(gapminder)
+library(tidyr)
+library(purrr)
+library(gt)
+library(mmtable2)
+
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/6dar_count/'
+```
+
+```{r}
+filenames <-c('~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/peaks_inf_vs_control_allCelltypes_FC05_adjP01.xlsx')
+contrast_names <- c('inf_vs_control') 
+
+peaks_all_contrasts_list <- list()
+
+for (i in 1:1) {
+  filename <- filenames[[i]]
+  sheets <- readxl::excel_sheets(filename)
+  x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X, col_names = F))
+  x <- lapply(x, as.data.frame)
+  names(x) <- sheets
+  peaks_all_contrasts_list[[contrast_names[[i]]]] <- x
+}
+```
+
+
+##################  ################ ##################  ################
+# disease direction
+
+```{r}
+xx <- peaks_all_contrasts_list$inf_vs_control %>% lapply(., nrow) %>% unlist()
+df <- data.frame(ct = names(xx), n_dar = xx)
+df <- df[order(df$n_dar, decreasing = T),]
+df$ct <- factor(df$ct, levels = df$ct)
+df <- df[df$n_dar > 1,]
+```
+
+```{r}
+# fill = "lightcoral"
+# Log-Transformed Bar Plot
+p <- ggplot(df, aes(x = ct, y = n_dar, fill = ct)) +
+  geom_bar(stat = "identity", width = 0.6, color = 'black', size = 0.2) +
+  scale_fill_manual(values = gca_colors_atac_union_anno1) + 
+  scale_y_log10() +
+  theme_pubr()+
+  theme(axis.text.y = element_text(size=8),
+  	  axis.text.x = element_text(size=8, angle=45, hjust = 1, vjust = 1),
+  	  axis.title = element_text(size=8),
+  	  legend.position="none",
+  	  plot.margin = margin(1,1,1,1,'cm'),
+  	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+  labs(title = paste0('Number of DARs: inflamed VS control'),
+       x = "",
+       y = "")
+
+pdf(paste0(out.dir, 'Number of DARs: inflamed VS control.pdf'), height = 4, width = 4.5)
+print(p)
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

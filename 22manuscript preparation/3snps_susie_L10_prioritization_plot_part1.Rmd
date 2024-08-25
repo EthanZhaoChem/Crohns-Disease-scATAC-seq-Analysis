@@ -1,0 +1,721 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/ukbb/'
+```
+
+```{r}
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+results <- readRDS('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/ukbb/results.rds')
+gwas_finemapped <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/ukbb/gwas_finemapped_annotated2.csv', row.names = 1)
+```
+
+##################  ################ 2 analysis & plot: snps in cCRE ##################  ################ 
+
+```{r}
+View(results$overlapped_QTL_caPeak_cor_gene)
+View(results$overlapped_cCRE_cor_gene)
+```
+
+```{r}
+# Just a check chunk
+results$snps_list_full$rs11236797
+gwas_finemapped['rs73739311', 'name_chr_pos_hg38']
+```
+
+```{r}
+# overlapped cCRE 1:
+plot.name <- 'IKZF1_rs1456896_rs9656588'
+gr.start <- 50260001
+gr.end <- 50310000
+snp.loc1 <- 50264865 # rs1456896
+snp.loc2 <- 50267184 # rs9656588
+chr.id <- 'chr7'
+gr_highlight <- GRanges(seqnames = c(chr.id, chr.id),
+                        ranges = IRanges(start = c(snp.loc1-250, snp.loc2-250), end = c(snp.loc1+250, snp.loc2+250)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc1+250 & start(links$Peak2GeneLinks) > snp.loc1-250
+                                             | start(links$Peak2GeneLinks) < snp.loc2+250 & start(links$Peak2GeneLinks) > snp.loc2-250
+                                             | end(links$Peak2GeneLinks) < snp.loc1+250 & end(links$Peak2GeneLinks) > snp.loc1-250 
+                                             |  end(links$Peak2GeneLinks) < snp.loc2+250 & end(links$Peak2GeneLinks) > snp.loc2-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='PLEKHG6')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 0.5),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+```{r}
+# overlapped cCRE 2: chr11:76,582,200-76,664,680
+plot.name <- 'LRRC32_rs11236797'
+gr.start <-76580001
+gr.end <-  76690000
+snp.loc <- 76588605 # rs11236797
+chr.id <- 'chr11'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-500), end = c(snp.loc+500)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='PLEKHG6')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 0.5),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+```{r}
+# overlapped cCRE 3: chr12:6,303,486-6,390,311
+plot.name <- 'PLEKHG6_rs28999107'
+gr.start <-6305001
+gr.end <-  6395000
+snp.loc <- 6383934 # rs28999107
+chr.id <- 'chr12'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-250), end = c(snp.loc+250)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='PLEKHG6')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 1.5),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+```{r}
+# overlapped cCRE 4: chr14:87,954,669-88,013,013
+plot.name <- 'GPR65_rs4462528'
+gr.start <-87955001
+gr.end <-  88013000
+snp.loc <- 87959953 # rs4462528
+chr.id <- 'chr14'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-250), end = c(snp.loc+250)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 1),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+
+```{r}
+# overlapped cCRE 5: chr16:50,620,353-50,689,802
+plot.name <- 'SNX20_rs146528649'
+gr.start <-50620001
+gr.end <-  50690000
+snp.loc <- 50627053 # rs146528649
+chr.id <- 'chr16'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-250), end = c(snp.loc+250)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 1),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+
+```{r}
+# overlapped cCRE 6: chr19:1,117,109-1,260,221
+plot.name <- 'MIDN_rs4807569'
+gr.start <-1117001
+gr.end <-  1260000
+snp.loc <- 1123379 # rs4807569
+chr.id <- 'chr19'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-1000), end = c(snp.loc+1000)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 2),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+
+```{r}
+# overlapped cCRE 7: chr22:36,859,207-36,869,974
+plot.name <- 'NCF4_rs4821544_rs760517'
+gr.start <- 36859001
+gr.end <- 36870000
+snp.loc1 <- 36862461 # rs4821544
+snp.loc2 <- 36862944 # rs760517
+chr.id <- 'chr22'
+gr_highlight <- GRanges(seqnames = c(chr.id, chr.id),
+                        ranges = IRanges(start = c(snp.loc1-50, snp.loc2-50), end = c(snp.loc1+50, snp.loc2+50)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc1+250 & start(links$Peak2GeneLinks) > snp.loc1-250
+                                             | start(links$Peak2GeneLinks) < snp.loc2+250 & start(links$Peak2GeneLinks) > snp.loc2-250
+                                             | end(links$Peak2GeneLinks) < snp.loc1+250 & end(links$Peak2GeneLinks) > snp.loc1-250 
+                                             |  end(links$Peak2GeneLinks) < snp.loc2+250 & end(links$Peak2GeneLinks) > snp.loc2-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='PLEKHG6')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    highlight = gr_highlight,
+    tileSize = 25,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 0.5),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+
+
+```{r}
+# overlapped cCRE 8: chr6:127,112,033-127,157,026
+plot.name <- 'RSPO3_rs7741021'
+gr.start <-127112001
+gr.end <-  127157000
+snp.loc <- 127147129 # rs7741021
+chr.id <- 'chr6'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-250), end = c(snp.loc+250)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 100,
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 0.5),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+
+
+```{r}
+# overlapped cCRE 9: chr5:132,178,832-132,448,047
+plot.name <- 'P4HA2_rs2188962'
+gr.start <-132278001
+gr.end <-  132448000
+snp.loc <- 132435113 # rs2188962
+chr.id <- 'chr5'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-500), end = c(snp.loc+500)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 250,
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 2),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+
+```{r}
+# overlapped cCRE 10: chr2:230,223,428-230,230,013
+plot.name <- 'SP110_rs13397985'
+gr.start <-230223001
+gr.end <-  230230000
+snp.loc <- 230226508 # rs13397985 
+chr.id <- 'chr2'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-50), end = c(snp.loc+50)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 25,
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 1),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+
+
+```{r}
+# overlapped cCRE 11: chr6:32,934,382-32,956,081
+plot.name <- 'HLA-DMB_rs111369841'
+gr.start <-32950001
+gr.end <-  32956000
+snp.loc <- 32953327 # rs111369841
+chr.id <- 'chr6'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-25), end = c(snp.loc+25)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 10,
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 1),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+
+
+
+```{r}
+# overlapped cCRE 12: chr6:32,432,436-32,476,036
+plot.name <- 'HLA-DRA_rs116980366'
+gr.start <-32432001
+gr.end <-  32476000
+snp.loc <- 32473142 # rs116980366
+chr.id <- 'chr6'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-250), end = c(snp.loc+250)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 250,
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 0.5),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+
+
+```{r}
+# overlapped cCRE 13: chr6:32,837,124-32,847,233
+plot.name <- 'PSMB8-AS1_rs74365910'
+gr.start <-32837000
+gr.end <-  32847000
+snp.loc <- 32838776 # rs74365910
+chr.id <- 'chr6'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-50), end = c(snp.loc+50)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 25,
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 2),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+```{r}
+# overlapped cCRE 14: chr6:32,622,968-32,817,604
+plot.name <- 'HLA-DQA1_rs73739311'
+gr.start <-32623001
+gr.end <-  32818000
+snp.loc <- 32796986 # rs73739311
+chr.id <- 'chr6'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-1000), end = c(snp.loc+1000)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 500,
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 1.5),
+    loops = links, 
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

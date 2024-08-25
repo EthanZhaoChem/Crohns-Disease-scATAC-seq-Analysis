@@ -1,0 +1,10 @@
+plink --vcf ../6.1impute_info/allPatients_info_updatedID.vcf.gz --impute-sex 0.4 0.8  --make-bed 
+
+
+PEDSEX: Sex as specified in the .fam file (1 = male, 2 = female, 0 = unknown). In your data, all are set to 0, indicating the sex was not specified in the input data.
+
+SNPSEX: Sex imputed based on the genotype data (1 = male, 2 = female, 0 = unknown). This is determined by PLINK based on the heterozygosity observed on the X chromosome.
+
+STATUS: Indicates if there's a discrepancy between the specified sex (PEDSEX) and the imputed sex (SNPSEX). Since all PEDSEX values are 0, all entries are marked as PROBLEM, indicating that PLINK cannot confirm the sex due to missing PEDSEX information.
+
+F: Inbreeding coefficient estimate on the X chromosome. This value is used to infer sex, where higher values typically suggest a male (due to hemizygosity of the X chromosome in males) and lower values suggest a female (due to homozygosity or heterozygosity in females). The threshold for distinguishing males from females is usually around 0.8.

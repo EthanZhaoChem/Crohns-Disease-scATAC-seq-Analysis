@@ -1,0 +1,153 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 5, fig.width = 5)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/'
+```
+
+####################################################################
+# read data
+```{r}
+filename_rds <- paste0('~/yuzhao1/work/atac_gca2024/24rasqual2/1rasqual_results/FDR_results_list.rds')
+FDR_results_list <- readRDS(filename_rds)
+qtls_table <- bind_rows(FDR_results_list, .id = 'QTL_significant_cellType') %>% as.data.frame()
+```
+
+```{r}
+snp_annotation <- read.csv('~/yuzhao1/work/atac_gca2024/24rasqual2/2annotateRSid/snps_rsID_clean.txt')
+snp_annotation$chr_pos <- paste0(snp_annotation$chr, '_', snp_annotation$pos, '_', snp_annotation$pos)
+qtls_table$hg38_name <- paste0(qtls_table$Chromosome, '_', qtls_table$SNP_position, '_', qtls_table$SNP_position)
+```
+
+# clean up row and col names, add QTL snp rsID
+```{r}
+# clear rownames
+rownames(qtls_table) <- NULL
+qtls_table <- qtls_table[, c("QTL_significant_cellType", "Feature_ID", "rsID",
+                             "Chromosome", "SNP_position", "hg38_name")]
+
+colnames(qtls_table) <- c('QTL_significant_cellType', 'QTL_caPeak', 'QTL_snp_name', 
+                                 'QTL_chr', 'QTL_snp_pos', 'QTL_snp_chrPos')
+qtls_table$QTL_snp_rsID <- mapvalues(qtls_table$QTL_snp_chrPos, snp_annotation$chr_pos, snp_annotation$rsID, warn_missing = F)
+```
+
+# add peak's cell type specificity
+```{r}
+# read cell type specific peaks
+peaks_anno1_df <- readRDS('~/yuzhao1/work/atac_gca2024/4peaks/DARs/healthy_union_anno1_peaks/FDR0_1FC0_5_peak_cellType_table.rds')
+
+# add celltype specificity
+qtls_table$caPeak_differentially_accessible_celltype <- mapvalues(qtls_table$QTL_caPeak, 
+                                                                         peaks_anno1_df$peak, 
+                                                                         peaks_anno1_df$cellType, 
+                                                                         warn_missing = F)
+qtls_table$caPeak_differentially_accessible_celltype[!qtls_table$QTL_caPeak %in% peaks_anno1_df$peak] <- ''
+```
+
+# add peak's cell type specificity, inflamed dar
+```{r}
+# read inflamed dar for all celltypes
+peaks_inflamed_df <- readRDS('~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/FDR0_1FC0_5_peak_cellType_table_inf_vs_control.rds')
+
+# add celltype specificity
+qtls_table$caPeak_upRegulated_inflamed_vs_control <- mapvalues(qtls_table$QTL_caPeak, 
+                                                                                    peaks_inflamed_df$peak,
+                                                                                    peaks_inflamed_df$cellType, 
+                                                                                    warn_missing = F)
+qtls_table$caPeak_upRegulated_inflamed_vs_control[!qtls_table$QTL_caPeak %in% peaks_inflamed_df$peak] <- ''
+
+```
+
+# motif disruption information
+```{r}
+# read motif information
+motif.breaks.all <- readRDS('~/yuzhao1/work/atac_gca2024/26motif_disruption3/3results_summary/motif.breaks.all_unique.rds')
+motif.breaks.tbl <- motif.breaks.all %>%
+  as_tibble() %>% 
+  dplyr::rename(SNP = SNP_id) %>% 
+  dplyr::mutate(snp.score = abs(scoreRef-scoreAlt)) %>%
+  dplyr::group_by(SNP) %>% 
+  dplyr::arrange(-snp.score) %>%
+  # dplyr::slice(1:5) %>%
+  dplyr::summarise(unique_TFs = paste0(unique(geneSymbol), collapse='&'),
+                   max_disruption_score = max(snp.score)) 
+motif.breaks.df <- data.frame(motif.breaks.tbl)
+```
+
+```{r}
+# add motif information
+qtls_table$snp_disrupted_motif <- mapvalues(qtls_table$QTL_snp_name, 
+                                                   motif.breaks.df$SNP,
+                                                   motif.breaks.df$unique_TFs, 
+                                                   warn_missing = F)
+qtls_table$snp_disrupted_motif[!qtls_table$QTL_snp_name %in% motif.breaks.df$SNP] <- ''
+```
+
+
+# snp in caPeak
+```{r}
+# caPeak and snp overlapped pysically
+check_snp_in_peak <- function(peak, snp){
+  flag <- 0
+  a.chr <- snp %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,1)
+  a.pos <- snp %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric()
+  b.chr <- peak %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,1)
+  b.start <- peak %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric()
+  b.end <- peak %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,3) %>% as.numeric()
+  if(a.chr == b.chr & a.pos >= b.start & a.pos <= b.end){
+    flag <- 1
+  }
+  return(flag)
+}
+
+qtls_table$QTL_snp_in_caPeak <- 0
+for (i in 1:nrow(qtls_table)) {
+  peak <- qtls_table$QTL_caPeak[[i]]
+  snp <- qtls_table$QTL_snp_name[[i]]
+  if(check_snp_in_peak(peak, snp)){
+    qtls_table$QTL_snp_in_caPeak [[i]] <- 1
+  }
+}
+qtls_table$QTL_snp_in_caPeak <- mapvalues(qtls_table$QTL_snp_in_caPeak, c(0,1), c('No', 'Yes'))
+```
+
+
+# save as supplementary table
+
+```{r}
+qtls_table <- qtls_table[, c("QTL_significant_cellType", "QTL_caPeak", "QTL_snp_name", "QTL_chr", "QTL_snp_pos",
+                                           "QTL_snp_rsID", "caPeak_differentially_accessible_celltype", "caPeak_upRegulated_inflamed_vs_control",
+                                           "snp_disrupted_motif", "QTL_snp_in_caPeak")]
+write.csv(qtls_table, '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Cell type specific caQTL.csv', row.names = F)
+```
+
+```{r}
+qtls_table <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Cell type specific caQTL.csv')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

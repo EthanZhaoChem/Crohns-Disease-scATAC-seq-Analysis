@@ -1,0 +1,244 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/1atac_umaps/'
+```
+
+```{r}
+proj.union <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+proj.epithelial <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_epithelial2/")
+proj.immune <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_immune2/")
+proj.stromal <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_stromal2/")
+```
+
+
+
+### All cells
+
+```{r}
+proj <- proj.union
+```
+
+```{r}
+unique(proj$anno1)[which(!unique(proj$anno1) %in% names(gca_colors_atac_union_anno1))]
+```
+
+```{r}
+df <- data.frame(proj@cellColData)
+df$embedding1 <- proj@embeddings$LSI_UMAP$df$`IterativeLSI#UMAP_Dimension_1`
+df$embedding2 <- proj@embeddings$LSI_UMAP$df$`IterativeLSI#UMAP_Dimension_2`
+df$cluster_name <- proj$anno1
+p <- plot_df_umap_custom(df, show.label = 'number', custom_colors = gca_colors_atac_union_anno1,
+                         plot_level = names(gca_colors_atac_union_anno1))
+
+
+pdf(paste0(out.dir, 'union_number.pdf'),  width = 8, height = 10, pointsize = 1)
+p
+dev.off()
+
+pdf(paste0(out.dir, 'union_number_loc.pdf'), width = 13, height = 9, pointsize = 1)
+p +
+  facet_wrap( ~ biopsy_location) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+
+pdf(paste0(out.dir, 'union_number_disease.pdf'), width = 13, height = 9, pointsize = 1)
+p +
+  facet_wrap( ~ disease_status) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+```
+
+```{r}
+df <- data.frame(proj@cellColData)
+df$embedding1 <- proj@embeddings$LSI_UMAP$df$`IterativeLSI#UMAP_Dimension_1`
+df$embedding2 <- proj@embeddings$LSI_UMAP$df$`IterativeLSI#UMAP_Dimension_2`
+df$cluster_name <- proj$category1
+p <- plot_df_umap_custom(df, show.label = 'na', custom_colors = gca_colors_atac_lineage,
+                         plot_level = names(gca_colors_atac_lineage))
+
+
+pdf(paste0(out.dir, 'union_lineage.pdf'),  width = 6, height = 6.3, pointsize = 1)
+p
+dev.off()
+
+pdf(paste0(out.dir, 'union_lineage_loc.pdf'),  width = 9, height = 6.3, pointsize = 1)
+p+
+  facet_wrap( ~ biopsy_location) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+
+pdf(paste0(out.dir, 'union_lineage_disease.pdf'),  width = 9, height = 6.3, pointsize = 1)
+p+
+  facet_wrap(~ disease_status) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+
+
+```
+
+
+### epithelial cells
+
+```{r}
+proj <- proj.epithelial
+```
+
+```{r}
+unique(proj$anno1)[which(!unique(proj$anno1) %in% names(gca_colors_atac_epithelial_anno1))]
+```
+
+```{r}
+df <- data.frame(proj@cellColData)
+df$embedding1 <- proj@embeddings$LSI_UMAP$df$`IterativeLSI#UMAP_Dimension_1`
+df$embedding2 <- proj@embeddings$LSI_UMAP$df$`IterativeLSI#UMAP_Dimension_2`
+df$cluster_name <- proj$anno1
+p <- plot_df_umap_custom(df, show.label = 'number', custom_colors = gca_colors_atac_epithelial_anno1,
+                         plot_level = names(gca_colors_atac_epithelial_anno1))
+
+
+pdf(paste0(out.dir, 'epithelial_number.pdf'),  width = 6, height = 7, pointsize = 1)
+p
+dev.off()
+
+pdf(paste0(out.dir, 'epithelial_number_loc.pdf'), width = 10, height = 7, pointsize = 1)
+p +
+  facet_wrap( ~ biopsy_location) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+
+pdf(paste0(out.dir, 'epithelial_number_disease.pdf'), width = 10, height = 7, pointsize = 1)
+p +
+  facet_wrap( ~ disease_status) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+```
+
+
+
+### immune cells
+
+```{r}
+proj <- proj.immune
+```
+
+```{r}
+unique(proj$anno1)[which(!unique(proj$anno1) %in% names(gca_colors_atac_immune_anno1))]
+```
+
+```{r}
+df <- data.frame(proj@cellColData)
+df$embedding1 <- proj@embeddings$LSI_UMAP$df$`IterativeLSI#UMAP_Dimension_1`
+df$embedding2 <- proj@embeddings$LSI_UMAP$df$`IterativeLSI#UMAP_Dimension_2`
+df$cluster_name <- proj$anno1
+p <- plot_df_umap_custom(df, show.label = 'number', custom_colors = gca_colors_atac_immune_anno1,
+                         plot_level = names(gca_colors_atac_immune_anno1))
+
+
+pdf(paste0(out.dir, 'immune_number.pdf'),  width = 6, height = 7, pointsize = 1)
+p
+dev.off()
+
+pdf(paste0(out.dir, 'immune_number_loc.pdf'), width = 10, height = 7, pointsize = 1)
+p +
+  facet_wrap( ~ biopsy_location) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+
+pdf(paste0(out.dir, 'immune_number_disease.pdf'), width = 10, height = 7, pointsize = 1)
+p +
+  facet_wrap( ~ disease_status) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+```
+
+
+
+### stromal cells
+
+```{r}
+proj <- proj.stromal
+```
+
+```{r}
+unique(proj$anno1)[which(!unique(proj$anno1) %in% names(gca_colors_atac_stromal_anno1))]
+```
+
+```{r}
+df <- data.frame(proj@cellColData)
+df$embedding1 <- proj@embeddings$LSI_UMAP$df$`IterativeLSI#UMAP_Dimension_1`
+df$embedding2 <- proj@embeddings$LSI_UMAP$df$`IterativeLSI#UMAP_Dimension_2`
+df$cluster_name <- proj$anno1
+p <- plot_df_umap_custom(df, show.label = 'number', custom_colors = gca_colors_atac_stromal_anno1,
+                         plot_level = names(gca_colors_atac_stromal_anno1))
+
+
+pdf(paste0(out.dir, 'stromal_number.pdf'),  width = 6, height = 7, pointsize = 1)
+p
+dev.off()
+
+pdf(paste0(out.dir, 'stromal_number_loc.pdf'), width = 10, height = 7, pointsize = 1)
+p +
+  facet_wrap( ~ biopsy_location) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+
+pdf(paste0(out.dir, 'stromal_number_disease.pdf'), width = 10, height = 7, pointsize = 1)
+p +
+  facet_wrap( ~ disease_status) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+```
+
+
+
+
+

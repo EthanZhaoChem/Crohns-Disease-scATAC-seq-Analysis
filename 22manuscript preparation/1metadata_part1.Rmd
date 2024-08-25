@@ -1,0 +1,294 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/1atac_metadata/'
+```
+
+```{r}
+proj.union <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+```
+
+
+```{r}
+theme.composition <-    
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    axis.text.y = element_text(size = 15, face = 'bold', colour = 'black', angle = 90, hjust = 0.5),
+    axis.text.x = element_text(size = 15, face = 'bold', colour = 'black', angle=45, hjust = 1, vjust = 1),
+    # axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 15, face = 'bold', colour = 'black'),
+    
+    legend.key = element_blank(),
+    legend.title = element_blank(),
+    legend.position = "bottom",
+    legend.text = element_text(size = 15),
+    plot.title = element_blank(),
+    plot.margin = unit(c(2, 2, 2, 2), "cm"))
+```
+
+### 1: #Samples per condition
+
+```{r}
+metadata <- proj.union@cellColData %>% as.data.frame()
+metadata$condition <- paste0(metadata$biopsy_location, '-', metadata$disease_status)
+metadata <- unique(metadata[, c('Sample', 'Patient_ID', 'condition')])
+
+```
+
+```{r}
+df <- table(metadata[, c('condition', 'Patient_ID')]) %>% as.data.frame()
+df$condition <- factor(df$condition, levels = c('TI-Control', 'AC-Control', 'TI-CD', 'AC-CD'))
+
+# use a temp df to rank patient ID
+df_patient.max_Nsamples <- data.frame('Patient_ID' = unique(df$Patient_ID), 'max_Nsamples' = 0)
+for (single_patient in df_patient.max_Nsamples$Patient_ID) {
+  df_temp <- subset(df, Patient_ID == single_patient)
+  df_patient.max_Nsamples[which(df_patient.max_Nsamples$Patient_ID == single_patient), 'max_Nsamples'] <- max(df_temp$Freq)
+}
+patient.levels <- df_patient.max_Nsamples$Patient_ID[order(df_patient.max_Nsamples$max_Nsamples, decreasing = T)]
+```
+
+
+```{r}
+df_long <- df
+df_long$Patient_ID <- factor(df_long$Patient_ID, levels = patient.levels)
+p1 <- ggplot(df_long, aes(x = condition, y = Freq, fill = Patient_ID)) +
+  geom_bar(position = "stack", stat = "identity", width = 0.6)+
+  # scale_fill_manual(values = c('TI' = "#8dd3c7", 'AC' = "#80b1d3", 'TI&AC' = '#e5d8bd'))+
+  scale_fill_manual(values = c(manual_colors, colors51))+
+  theme(
+    panel.grid.major = element_line(linetype = 'dashed', size = 0.5),
+    panel.grid.minor = element_line(linetype = 'dashed', size = 0.5),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    axis.text.y = element_text(size = 15, face = 'bold', colour = 'black', angle = 90, hjust = 0.5),
+    axis.text.x = element_text(size = 15, face = 'bold', colour = 'black', angle=45, hjust = 1, vjust = 1),
+    # axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 15, face = 'bold', colour = 'black'),
+    
+    legend.key = element_blank(),
+    legend.title = element_blank(),
+    legend.position = "bottom",
+    legend.text = element_text(size = 15),
+    plot.title = element_blank(),
+    plot.margin = unit(c(2, 2, 2, 2), "cm"))+
+  labs(y = "Sample number", x = "", fill = "")+
+  guides(fill = guide_legend(nrow = 8))
+
+
+pdf(paste0(out.dir, 'df_sample_condition_groupedByPatient.pdf'),  width = 5, height = 10, pointsize = 1)
+print(p1)
+dev.off()
+```
+
+
+### 2: #Samples per individual
+
+```{r}
+metadata <- proj.union@cellColData %>% as.data.frame()
+```
+
+```{r}
+df <- unique(metadata[, c('Sample', 'Patient_ID', 'biopsy_location', 'disease_status')])
+df_control <- subset(df, disease_status == 'Control')
+df_cd <- subset(df, disease_status == 'CD')
+```
+
+```{r}
+cd_patientIDs <- unique(df_cd$Patient_ID)
+df1 <- data.frame('Patient_ID' = cd_patientIDs, 'obtained_regions' = 'NA')
+for (single.patient in cd_patientIDs) {
+  obtained_regions <- paste0(df_cd[which(df_cd$Patient_ID==single.patient), 'biopsy_location'], collapse = '')
+  df1[which(df1$Patient_ID==single.patient), 'obtained_regions'] <- obtained_regions
+}
+```
+
+```{r}
+control_patientIDs <- unique(df_control$Patient_ID)
+df2 <- data.frame('Patient_ID' = control_patientIDs, 'obtained_regions' = 'NA')
+for (single.patient in control_patientIDs) {
+  obtained_regions <- paste0(df_control[which(df_control$Patient_ID==single.patient), 'biopsy_location'], collapse = '')
+  df2[which(df2$Patient_ID==single.patient), 'obtained_regions'] <- obtained_regions
+}
+```
+
+```{r}
+df_sample_patient <- data.frame('Control' = c(1, 2, 13),
+                             'CD' = c(11, 8, 4),
+                             'type' = c('TI', 'AC', 'TI&AC'))
+```
+
+```{r}
+frame_todo <- 'df_sample_patient'
+df <- frame_todo %>% as.name() %>% eval()
+df_long <- tidyr::gather(df, key = "disease_status", value = "Value", -type)
+
+p1 <- ggplot(df_long, aes(x = disease_status, y = Value, fill = type)) +
+  geom_bar(position = "stack", stat = "identity", width = 0.6)+
+  scale_fill_manual(values = c('TI' = "#8dd3c7", 'AC' = "#80b1d3", 'TI&AC' = '#e5d8bd'))+
+  theme.composition+
+  labs(y = "Patient number", x = "", fill = "")+
+  guides(fill = guide_legend(nrow = 1))
+
+
+pdf(paste0(out.dir, frame_todo, '.pdf'),  width = 5, height = 8, pointsize = 1)
+print(p1)
+dev.off()
+```
+
+### 3: #Samples for location and condition
+
+```{r}
+metadata <- read.table('~/yuzhao1/work/atac_gca2024/0metadata/meta_Ethan_curated_20240311.csv', sep=',', header = T)
+metadata$inflammation_status[metadata$inflammation_status==''] <- 'Control'
+df_sample_atac <- data.frame(unclass(table(metadata[, c('inflammation_status', 'biopsy_location')])))
+df_cell_atac <- data.frame(unclass(table(proj.union@cellColData[, c('inflammation_status', 'biopsy_location')])))
+
+
+# df_sample_rna <- data.frame('TI' = c(13, 7, 8, 6),
+#                             'AC' = c(14, 5, 1, 1),
+#                             row.names = c('Control', 'CD noninflamed', 'CD adjacent', 'Inflamed'))
+# 
+# df_cell_rna <- data.frame('TI' = c(65781, 23524, 33139, 22665),
+#                            'AC' = c(48328, 16320, 960, 2558),
+#                            row.names = c('Control', 'CD noninflamed', 'CD adjacent', 'Inflamed'))
+```
+
+
+
+# atac data: 2plots
+```{r}
+frame_todo <- 'df_sample_atac'
+df <- frame_todo %>% as.name() %>% eval()
+df$inflammation_status <- rownames(df)
+df_long <- tidyr::gather(df, key = "biopsy_location", value = "Value", -inflammation_status)
+df_long$inflammation_status <- factor(df_long$inflammation_status,
+                                      levels = names(gca_colors_inflammation))
+df_long$biopsy_location <- factor(df_long$biopsy_location,
+                                  levels = names(gca_colors_location))
+
+p1 <- ggplot(df_long, aes(x = biopsy_location, y = Value, fill = inflammation_status)) +
+  geom_bar(position = "stack", stat = "identity", width = 0.6)+
+  scale_fill_manual(values = gca_colors_inflammation)+
+  theme.composition+
+  labs(y = "Sample number", x = "", fill = "")+
+  guides(fill = guide_legend(nrow = 2))
+
+
+pdf(paste0(out.dir, frame_todo, '.pdf'),  width = 5, height = 8, pointsize = 1)
+print(p1)
+dev.off()
+```
+
+```{r}
+frame_todo <- 'df_cell_atac'
+df <- frame_todo %>% as.name() %>% eval()
+df$inflammation_status <- rownames(df)
+df_long <- tidyr::gather(df, key = "biopsy_location", value = "Value", -inflammation_status)
+df_long$inflammation_status <- factor(df_long$inflammation_status,
+                                      levels = names(gca_colors_inflammation))
+df_long$biopsy_location <- factor(df_long$biopsy_location,
+                                  levels = names(gca_colors_location))
+
+p1 <- ggplot(df_long, aes(x = biopsy_location, y = Value, fill = inflammation_status)) +
+  geom_bar(position = "stack", stat = "identity", width = 0.6)+
+  scale_fill_manual(values = gca_colors_inflammation)+
+  theme.composition +
+  labs(title = "scATAC", y = "Cell number", x = "", fill = "")+
+  guides(fill = guide_legend(nrow = 2))
+
+pdf(paste0(out.dir, frame_todo, '.pdf'), width = 5, height = 8, pointsize = 1)
+print(p1)
+dev.off()
+```
+
+# rna data: 2plots
+
+
+```{r}
+# frame_todo <- 'df_sample_rna'
+# df <- frame_todo %>% as.name() %>% eval()
+# df$inflammation_status <- rownames(df)
+# df_long <- tidyr::gather(df, key = "biopsy_location", value = "Value", -inflammation_status)
+# df_long$inflammation_status <- factor(df_long$inflammation_status,
+#                                       levels = names(gca_colors_inflammation))
+# df_long$biopsy_location <- factor(df_long$biopsy_location,
+#                                   levels = names(gca_colors_location))
+# 
+# p1 <- ggplot(df_long, aes(x = biopsy_location, y = Value, fill = inflammation_status)) +
+#   geom_bar(position = "stack", stat = "identity", width = 0.6)+
+#   scale_fill_manual(values = gca_colors_inflammation)+
+#   theme.composition+
+#   labs(y = "Sample number", x = "", fill = "")+
+#   guides(fill = guide_legend(nrow = 2))
+# 
+# 
+# pdf(paste0(out.dir, frame_todo, '.pdf'),  width = 5, height = 8, pointsize = 1)
+# print(p1)
+# dev.off()
+```
+
+```{r}
+# frame_todo <- 'df_cell_rna'
+# df <- frame_todo %>% as.name() %>% eval()
+# df$inflammation_status <- rownames(df)
+# df_long <- tidyr::gather(df, key = "biopsy_location", value = "Value", -inflammation_status)
+# df_long$inflammation_status <- factor(df_long$inflammation_status,
+#                                       levels = names(gca_colors_inflammation))
+# df_long$biopsy_location <- factor(df_long$biopsy_location,
+#                                   levels = names(gca_colors_location))
+# 
+# p1 <- ggplot(df_long, aes(x = biopsy_location, y = Value, fill = inflammation_status)) +
+#   geom_bar(position = "stack", stat = "identity", width = 0.6)+
+#   scale_fill_manual(values = gca_colors_inflammation)+
+#   theme.composition +
+#   labs(y = "Cell number", x = "", fill = "")+
+#   guides(fill = guide_legend(nrow = 2))
+# 
+# pdf(paste0(out.dir, frame_todo, '.pdf'), width = 5, height = 8, pointsize = 1)
+# print(p1)
+# dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

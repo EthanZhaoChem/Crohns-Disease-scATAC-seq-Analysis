@@ -1,0 +1,116 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(harmony)
+library(Seurat)
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/9rna_markerHeatmap/'
+```
+
+```{r, include = F, eval=F}
+union <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/gca_combined_final.rds')
+epithelial <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/epithelial4.rds')
+immune <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/immune3.rds')
+stromal <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/stromal2.rds')
+```
+
+###################### 1. Annotation dot plot ########################
+
+```{r}
+seurat <- epithelial
+seurat$anno2 <- mapvalues(seurat$anno2, 
+                          c("CD Colonocyte1", "CD Colonocyte2", "CD Enterocyte1", "CD Enterocyte2", "Colon BEST4", "Colon EEC", "Colon Goblet",
+                            "Colon Stem", "Colon TA", "Colon Tuft", "Colonocyte", "Early Colonocyte", "Early Enterocyte", "Enterocyte", "Ileum BEST4",
+                            "Ileum EEC", "Ileum Goblet", "Ileum Paneth", "Ileum Stem", "Ileum TA", "Ileum Tuft"),
+                          c("Colonocyte", "Colonocyte", "Enterocyte", "Enterocyte", "BEST4", "EEC", "AC_Goblet",
+                            "AC_Stem", "Transit_amplifying", "Tuft", "Colonocyte", "Early_Colonocyte", "Early_Enterocyte", "Enterocyte", "BEST4",
+                            "EEC", "TI_Goblet", "Paneth", "TI_Stem", "Transit_amplifying", "Tuft"))
+gca_rna.epithelial.markers <- list(
+  "TI_Stem" = c('LGR5', 'OLFM4'), 
+  "AC_Stem" = c('SMOC2'), 
+  "Transit_amplifying" = c('MKI67', 'TOP2A', 'TUBA1B'), 
+  "Early_Enterocyte" = c( 'SI', 'GSTA2'),
+  "Enterocyte" = c('SLC15A1', 'APOA4', 'CUBN'),
+  "Early_Colonocyte" = c('ADH1C','CD24', 'FABP5'),
+  "Colonocyte" = c('CEACAM5', 'CA2', 'CEACAM7', 'AQP8'),
+  "TI_Goblet" = c('MUC2', 'TFF3', 'CLCA1', 'SPINK4', 'FER1L6'),
+  "AC_Goblet" = c('ITLN1',  'KLK1', 'BEST2'),
+  "BEST4" = c('BEST4', 'CA7', 'NOTCH2', 'SPIB'),
+  "Paneth" = c('ITLN2', 'DEFA5', 'REG3A'),
+  "EEC" = c('CHGA', 'KCNB2', 'RIMBP2'),
+  "Tuft" = c('POU2F3', 'FYB1')
+)
+seurat$anno2 <- factor(seurat$anno2, levels = names(gca_rna.epithelial.markers))
+
+pdf(paste0(out.dir, 'epithelial_anno2.pdf'), width = 5, height = 10.5, pointsize = 1)
+plot_seurat_dot_custom(seurat, group = 'anno2', features = gca_rna.epithelial.markers)
+dev.off()
+```
+
+
+```{r}
+seurat <- immune
+seurat$anno2 <- mapvalues(seurat$anno2, 
+                          c("CD103+ CD8", "MAIT", "CD4 Tcm", "Treg", "CD103- CD4", "CD103+ CD4", "ILCs", "NK", "Proliferating T", 
+                            "gdT", "KLRG1+ CD8", "Memory B", "IgA plasma", "Naive B", "IgG plasma", "GC B", "Macrophage", "Mast",
+                            "Monocyte", "DC", "Neutrophil"),
+                          c("CD8", "MAIT", "CD4", "CD4", "CD4", "CD4", "ILCs", "NK", "Proliferating_T", 
+                            "gdT", "CD8", "MemoryB", "Plasma", "NaiveB", "Plasma", "GC_B", "Macrophage", "Mast",
+                            "Macrophage", "DC", "Neutrophil"))
+gca_rna.immune.markers <- list(
+  "CD4" = c('CD3D', 'CD4'), 
+  "CD8" = c('CD8A','CD8B'), 
+  "gdT" = c('TRDC', 'GNLY', 'GZMA', 'ENTPD1'), 
+  "NK" = c('NCR1', 'KLRF1'), 
+  "ILCs" = c('PRKG1', 'PCDH9','AREG','IL1R1', 'IL23R', 'KIT'),
+  "GC_B" = c('BCL7A'),
+  "NaiveB" = c('CD19', 'MS4A1', 'IGHD'),
+  "MemoryB" = c('CD27'),
+  "Plasma" = c('SDC1', 'IGHA1', 'IGHG1'),
+  "Macrophage" = c('CD14', 'CD163', 'MMP12', 'C1QA'),
+  "DC" = c('CLEC9A', 'CD1C'),
+  "Mast" = c('CPA3', 'KIT', 'TPSB2'),
+  "Neutrophil" = c('FCGR3B'),
+  "MAIT" = c('SLC4A10', 'NCR3'), 
+  "Proliferating_T" = c('MKI67'))
+seurat$anno2 <- factor(seurat$anno2, levels = names(gca_rna.immune.markers))
+
+pdf(paste0(out.dir, 'immune_anno2.pdf'), width = 5, height = 10.5, pointsize = 1)
+plot_seurat_dot_custom(seurat, group = 'anno2', features = gca_rna.immune.markers %>% unlist() %>% unique())
+dev.off()
+```
+
+
+
+```{r}
+seurat <- stromal
+seurat$anno2 <- mapvalues(seurat$anno2, 
+                          c("Myofibroblast", "Fibroblast4", "Fibroblast3", "Arterial", "Glial", "Pericyte", "Venous", "Contractile Pericyte",
+                            "Fibroblast2", "Fibroblast1", "Lymphatic endothelium"),
+                          c("Fibroblast", "Fibroblast", "Fibroblast", "Arterial", "Glial", "Pericyte", "Venous", "Pericyte",
+                            "Fibroblast", "Fibroblast", "Lymphatic endothelium"))
+gca_rna.stromal.markers <- list(
+  "Fibroblast" = c('COL1A1', 'ADAMDEC1', 'CCL11', 'CCL13', 'NRG1', 'NPY', 'PTGS1','SOX6', 'COL4A6', 'ACTA2', 'TAGLN'), 
+  "Pericyte" = c('NOTCH3', 'MCAM', 'RGS5'), 
+  "Arterial" = c('PECAM1', 'HEY1', 'EFNB2'), 
+  "Venous" = c('ACKR1', 'VWF'), 
+  "Lymphatic endothelium" = c('PROX1', 'LYVE1', 'CCL21'), 
+  "Glial" = c('S100B', 'NRXN1'))
+seurat$anno2 <- factor(seurat$anno2, levels = names(gca_rna.stromal.markers))
+
+pdf(paste0(out.dir, 'stromal_anno2.pdf'), width = 3, height = 10.5, pointsize = 1)
+plot_seurat_dot_custom(seurat, group = 'anno2', features = gca_rna.stromal.markers %>% unlist() %>% unique())
+dev.off()
+```
+

@@ -1,0 +1,144 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/'
+```
+
+```{r}
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+results <- readRDS('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/results.rds')
+gwas_finemapped <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/gwas_finemapped_annotated2.csv', row.names = 1)
+abc.links <- readRDS('~/yuzhao1/work/atac_gca2024/22abc/abc_links_ibd.rds')
+df_abc <- readRDS('~/yuzhao1/work/atac_gca2024/22abc/abc_df_ibd.rds')
+df_abc$peak <- paste0(df_abc$chr, '_', df_abc$start, '_', df_abc$end)
+```
+
+```{r}
+View(results$abc_qtl_caPeak_overlappedPeak_maxGene)
+```
+
+```{r}
+# Just a check chunk
+results$snps_list_full$rs11236797
+gwas_finemapped['rs11236797', 'name_chr_pos_hg38']
+```
+
+##################  ################ gwas snp overlapped with qtl  ##################  ################ 
+
+```{r}
+# overlapped QTL 1:
+plot.name <- 'PTGER4_QTL_rs9292777'
+gr.start <- 40354001
+gr.end <- 40700000
+snp.loc1 <- 40437846 # rs9292777
+snp.loc2 <- 40410482 # rs11742570
+snp.loc3 <- 40438369 # rs4631223
+chr.id <- 'chr5'
+gr_highlight <- GRanges(seqnames = c(chr.id, chr.id, chr.id),
+                        ranges = IRanges(start = c(snp.loc1-1000, snp.loc2-1000, snp.loc3-1000),
+                                         end = c(snp.loc1+1000, snp.loc2+1000, snp.loc3+1000)))
+
+links <- abc.links
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc1+500 & start(links$Peak2GeneLinks) > snp.loc1-500
+                                             | start(links$Peak2GeneLinks) < snp.loc2+500 & start(links$Peak2GeneLinks) > snp.loc2-500
+                                             | end(links$Peak2GeneLinks) < snp.loc1+500 & end(links$Peak2GeneLinks) > snp.loc1-500 
+                                             | end(links$Peak2GeneLinks) < snp.loc2+500 & end(links$Peak2GeneLinks) > snp.loc2-500 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+
+gene_anno <- getGeneAnnotation(proj)
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 1000,
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 0.5),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+# plotPDF(p, 
+#     name = "tmp.pdf", 
+#     ArchRProj = proj, 
+#     addDOC = FALSE, width = 5, height = 7)
+# file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+#           paste0(out.dir, '/plots/snp_overlap_qtl/', plot.name, '.pdf'))
+```
+
+
+```{r}
+# overlapped QTL 2:
+plot.name <- 'CIITA_QTL_rs6416647'
+gr.start <- 10870001
+gr.end <- 10880000
+snp.loc1 <- 10871740 # rs6416647
+snp.loc2 <- 10871258 # rs7194862
+snp.loc3 <- 10871740 # rs6416647
+chr.id <- 'chr16'
+gr_highlight <- GRanges(seqnames = c(chr.id, chr.id, chr.id),
+                        ranges = IRanges(start = c(snp.loc1-100, snp.loc2-100, snp.loc3-100),
+                                         end = c(snp.loc1+100, snp.loc2+100, snp.loc3+100)))
+
+
+links <- abc.links
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc1+500 & start(links$Peak2GeneLinks) > snp.loc1-500
+                                             | start(links$Peak2GeneLinks) < snp.loc2+500 & start(links$Peak2GeneLinks) > snp.loc2-500
+                                             | end(links$Peak2GeneLinks) < snp.loc1+500 & end(links$Peak2GeneLinks) > snp.loc1-500 
+                                             | end(links$Peak2GeneLinks) < snp.loc2+500 & end(links$Peak2GeneLinks) > snp.loc2-500 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+
+gene_anno <- getGeneAnnotation(proj)
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 25,
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 2),
+    loops = links,
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_overlap_qtl/', plot.name, '.pdf'))
+```
+

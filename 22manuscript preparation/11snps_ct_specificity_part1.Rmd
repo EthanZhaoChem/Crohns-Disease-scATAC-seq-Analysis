@@ -1,0 +1,100 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/11snps_ct_specificity/'
+```
+
+```{r}
+# modify table1 only
+library(readxl)
+filename <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Prioritization of GWAS finemapped SNPs.xlsx'
+sheets <- readxl::excel_sheets(filename)
+x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X,  col_types = 'guess'))
+x <- lapply(x, as.data.frame)
+names(x) <- sheets
+gwas_prioritized_table1 <- x$`All GWAS finemapped SNPs`
+gwas_prioritized_table2 <- x$`QTL overlapping details`
+rownames(gwas_prioritized_table1) <- gwas_prioritized_table1$GWAS_snp
+```
+
+```{r}
+pip_top_threshold <- 0.2
+
+# top snps
+gwas_top <- gwas_prioritized_table1[gwas_prioritized_table1$finemap_susie_pip >= pip_top_threshold,] 
+
+# top snps overlapping cCREs
+gwas_top_ct <- gwas_prioritized_table1[gwas_prioritized_table1$finemap_susie_pip >= pip_top_threshold &
+                                      !is.na(gwas_prioritized_table1$overlapped_cCRE_differentially_upRegulated_celltype) &
+                                      gwas_prioritized_table1$Affected_by_HLA == 'No',] 
+```
+
+```{r}
+cts_all <- gwas_top_ct$overlapped_cCRE_differentially_upRegulated_celltype %>% strsplit(split = '-', fixed=T) %>% unlist() %>% unique()
+cts_all <- cts_all[order(match(cts_all, names(gca_colors_atac_union_anno1)))]
+snps_all <- unique(gwas_top_ct$GWAS_snp)
+
+df <- data.frame(matrix(0, nrow = length(snps_all), ncol = length(cts_all)))
+rownames(df) <- snps_all
+colnames(df) <- cts_all
+
+for (snp in snps_all) {
+  xx <- gwas_top_ct[snp, 'overlapped_cCRE_differentially_upRegulated_celltype'] %>% strsplit(split = '-', fixed=T) %>% unlist() 
+  df[snp, xx] <- 1
+}
+```
+
+```{r}
+library(ComplexHeatmap)
+pips <- gwas_prioritized_table1[rownames(df), 'finemap_susie_pip']
+ha <- rowAnnotation(xx=anno_text(pips %>% format(., digits = 2) %>% as.character()), annotation_name_rot = 0)
+
+# library(viridis)
+# col_fun = colorRamp2(seq(0, 1, 0.01), viridis(101, option = 'mako') %>% rev())
+# ha <- rowAnnotation(PIP=pips, annotation_name_rot = 0, col = list(PIP = col_fun))
+```
+
+```{r}
+color = c('white', "#c51b7d")
+breaks <- seq(0, 1, length.out = length(color))
+color <- circlize::colorRamp2(breaks, color)
+
+ht <- Heatmap(df, 
+              name = 'spearman cor',
+              col = color,
+              rect_gp = gpar(col = "black", lwd = 1),
+              cluster_columns = F, cluster_rows = T,
+              show_row_dend = F, show_column_dend = F, 
+              show_row_names = T, show_column_names = T,
+              row_names_side = "left",
+              border = F,
+              show_heatmap_legend = F,
+              use_raster = F,
+              right_annotation = ha)
+pdf(paste0(out.dir, 'snps_ct_heatmap_pip_', pip_top_threshold, '.pdf'), height = 8, width = 6.3)
+draw(ht, padding = unit(c(.1, .1, .1, .1), "npc"))
+dev.off()
+```
+
+
+
+
+
+
+

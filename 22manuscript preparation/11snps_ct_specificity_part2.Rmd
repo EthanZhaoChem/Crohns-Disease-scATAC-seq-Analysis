@@ -1,0 +1,231 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/11snps_ct_specificity/pesudo_bulk_box/'
+
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
+```
+
+```{r}
+# modify table1 only
+library(readxl)
+filename <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Prioritization of GWAS finemapped SNPs.xlsx'
+sheets <- readxl::excel_sheets(filename)
+x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X,  col_types = 'guess'))
+x <- lapply(x, as.data.frame)
+names(x) <- sheets
+gwas_prioritized_table1 <- x$`All GWAS finemapped SNPs`
+gwas_prioritized_table2 <- x$`QTL overlapping details`
+rownames(gwas_prioritized_table1) <- gwas_prioritized_table1$GWAS_snp
+```
+
+```{r}
+pip_top_threshold <- 0.2
+
+# top snps
+gwas_top <- gwas_prioritized_table1[gwas_prioritized_table1$finemap_susie_pip >= pip_top_threshold,] 
+
+# top snps overlapping cCREs
+gwas_top_ct <- gwas_prioritized_table1[gwas_prioritized_table1$finemap_susie_pip >= pip_top_threshold &
+                                      !is.na(gwas_prioritized_table1$overlapped_cCRE_differentially_upRegulated_celltype) &
+                                      gwas_prioritized_table1$Affected_by_HLA == 'No',] 
+```
+
+```{r, eval=FALSE}
+# # calculate pseudo bulk normalized accessibility
+# # prepare bed file
+# dir.query <- '/project/gca/yuzhao1/work/atac_gca2024/4peaks/6pseudo_bulk_accessibility/'
+# peaks <- unique(gwas_top_ct$overlapped_cCRE)
+# peaks <- peaks[!is.na(peaks)]
+# df_bed <- data.frame(chr = peaks %>% strsplit(., split = '_', fixed=T) %>% sapply(.,`[[`,1),
+#                      start = peaks %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,2),
+#                      end = peaks %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,3))
+# 
+# write.table(df_bed, 
+#             paste0(dir.query, 'query.bed'), 
+#             row.names = F,
+#              col.names = F, 
+#              sep="\t", 
+#              quote=FALSE)
+```
+
+```{r}
+# read peak accessibility per pseudo-bulk
+df <- read.table('~/yuzhao1/work/atac_gca2024/4peaks/6pseudo_bulk_accessibility/results/all.bed', sep = '\t', header = F)
+colnames(df) <- c('chr', 'start', 'end', 'pseudo_bulk', 'accessibility')
+df$peak <- paste0(df$chr, '_', df$start, '_', df$end) 
+df$ct <- 'empty'
+df$individual <- 'empty'
+
+split_by_last_underscore <- function(string) {
+  # Find the position of the last underscore
+  last_underscore_pos <- max(gregexpr("_", string)[[1]])
+  
+  # Split the string into two parts
+  part1 <- substr(string, 1, last_underscore_pos - 1)
+  part2 <- substr(string, last_underscore_pos + 1, nchar(string))
+  
+  return(list(part1 = part1, part2 = part2))
+}
+
+for(i in 1:nrow(df)){
+  xx <- split_by_last_underscore(df[i, 'pseudo_bulk'])
+  df[i, 'ct'] <- xx[[1]]
+  df[i, 'individual'] <- xx[[2]]
+}
+
+```
+
+```{r}
+# filter for pseudo-bulks with more than 20 cells
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+proj$anno1_individual <- paste0(proj$anno1, '_', proj$Patient_ID_masked)  # saved
+ncells_pseudoBulk <- table(proj$anno1_individual) %>% data.frame(.)
+colnames(ncells_pseudoBulk) <- c('pseudo_bulk', 'ncells')
+```
+
+```{r}
+df$ncells <- mapvalues(df$pseudo_bulk, ncells_pseudoBulk$pseudo_bulk, ncells_pseudoBulk$ncells) %>% as.numeric()
+df <- df[df$ncells > 20,]
+```
+
+```{r}
+for(i in 1:nrow(gwas_top_ct)){
+  peak_plot <- gwas_top_ct[i, 'overlapped_cCRE']
+  rsID <- gwas_top_ct[i, 'GWAS_snp']
+  nearest_gene <- gwas_top_ct[i, 'snp_nearest_gene_name']
+  
+  df_plot <- df[df$peak==peak_plot, ]
+  df_plot$ct <- factor(df_plot$ct, levels = names(gca_colors_atac_union_anno1))
+  p1 <- ggviolin(df_plot, x = 'ct', y = 'accessibility',   fill = 'ct', 
+                palette = gca_colors_atac_union_anno1, add = "jitter", add.params = list(size=0.3),
+                scale = 'width', width=0.8, 
+                trim = T, position = position_dodge(0.7), draw_quantiles = 0.5)+
+    theme_pubr()+
+    theme(axis.text.y = element_text(size=15),
+    	  axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+    	  axis.title.y = element_text(size=20),
+    	  axis.title.x = element_blank(),
+    	  legend.title = element_blank(),
+    	  legend.text = element_text(size=10),
+    	  legend.position = "none",
+    	  plot.title = element_text(size=20, hjust=0.5, face = 'bold'))+
+    labs(title = peak_plot, y='Normalized accessibility')
+  
+  p2 <- ggboxplot(df_plot,x = 'ct', y = 'accessibility',   fill = 'ct', outlier.shape = NA, 
+          bxp.errorbar=T, bxp.errorbar.width = 0.2)+ 
+    geom_jitter(color="black", size=1.2, alpha=0.9, width = 0.1) +
+    scale_fill_manual(values=gca_colors_atac_union_anno1)+
+    theme_pubr()+
+    theme(axis.text.y = element_text(size=15),
+    	  axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+    	  axis.title.y = element_text(size=20),
+    	  axis.title.x = element_blank(),
+    	  legend.title = element_blank(),
+    	  legend.text = element_text(size=10),
+    	  legend.position = "none",
+    	  plot.title = element_text(size=20, hjust=0.5, face = 'bold'))+
+    labs(title = paste0(peak_plot, '-', rsID), y='Normalized accessibility')
+  
+  pdf(paste0(out.dir, rsID, '-', nearest_gene, '-', peak_plot, '.pdf'), height = 6, width = 20)
+  # print(p1)
+  print(p2)
+  dev.off()
+}
+
+```
+
+```{r}
+# out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/11snps_ct_specificity/pesudo_bulk_density/'
+# for(i in 1:nrow(gwas_top_ct)){
+#   peak_plot <- gwas_top_ct[i, 'overlapped_cCRE']
+#   rsID <- gwas_top_ct[i, 'GWAS_snp']
+#   nearest_gene <- gwas_top_ct[i, 'snp_nearest_gene_name']
+#   
+#   df_plot <- df[df$peak==peak_plot, ]
+#   df_plot$ct <- factor(df_plot$ct, levels = names(gca_colors_atac_union_anno1))
+#   p <- ggplot(df_plot, aes(x=accessibility, fill=ct)) + 
+#     geom_density(alpha=0.8) + 
+#     scale_fill_manual(values = gca_colors_atac_union_anno1) +
+#     theme_pubr()+
+#     theme(axis.text.y = element_text(size=15),
+#     	  axis.text.x = element_text(angle=45, hjust = 1, vjust = 1),
+#     	  axis.title = element_text(size=20),
+#     	  legend.title = element_blank(),
+#     	  legend.text = element_text(size=10),
+#     	  legend.position = "bottom",
+#     	  plot.title = element_text(size=20, hjust=0.5, face = 'bold'))+
+#     labs(title = peak_plot, x = 'Normalized accessibility', y = 'Density')
+# 
+#   
+#   pdf(paste0(out.dir, nearest_gene, '-', peak_plot, '-', rsID, '.pdf'), height = 8, width = 7)
+#   print(p)
+#   dev.off()
+# }
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

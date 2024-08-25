@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH --output=2.2ligate_log/%x.out
+#SBATCH --error=2.2ligate_log/%x.err
+#SBATCH --time=36:00:00
+#SBATCH --partition=caslake
+#SBATCH --account=pi-spott
+#SBATCH --tasks=1
+#SBATCH --mem=20Gb
+
+sampleID=$1
+chrom=$2 
+output_cell=$3
+phase_output_cell=$4
+
+
+ls -1v ${phase_output_cell}/${sampleID}_imputed_chr${chrom}_*.bcf > ${output_cell}/list.chr${chrom}.txt; 
+GLIMPSE2_ligate_static --input ${output_cell}/list.chr${chrom}.txt --output ${output_cell}/${sampleID}_chr${chrom}_ligated.bcf

@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --output=3.1phase_log/%x.out
+#SBATCH --error=3.1phase_log/%x.err
+#SBATCH --time=36:00:00
+#SBATCH --partition=caslake
+#SBATCH --account=pi-spott
+#SBATCH --tasks=1
+#SBATCH --mem=30Gb
+
+dir_glimpse=$1
+dir_cellranger=$2 
+output_cell=$3 
+outputLog_cell=$4
+sampleID=$5
+chrom=$6
+
+REF=$dir_glimpse/ref_panel/split/1000GP.chr${chrom}
+BAM=$dir_cellranger/${sampleID}.bam
+while IFS="" read -r LINE || [ -n "$LINE" ]; 
+do   
+    printf -v ID "%02d" $(echo $LINE | cut -d" " -f1)
+    IRG=$(echo $LINE | cut -d" " -f3)
+    ORG=$(echo $LINE | cut -d" " -f4)
+    CHR=$(echo ${LINE} | cut -d" " -f2)
+    REGS=$(echo ${IRG} | cut -d":" -f 2 | cut -d"-" -f1)
+    REGE=$(echo ${IRG} | cut -d":" -f 2 | cut -d"-" -f2)
+    OUT=$output_cell/${sampleID}_imputed
+    GLIMPSE2_phase_static --bam-file ${BAM} --reference ${REF}_${CHR}_${REGS}_${REGE}.bin --output ${OUT}_${CHR}_${REGS}_${REGE}.bcf
+done < ${dir_glimpse}/chunks/chunks.chr${chrom}.txt

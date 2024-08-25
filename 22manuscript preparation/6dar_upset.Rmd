@@ -1,0 +1,233 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(Repitools)
+library(readxl)  
+library(ComplexHeatmap)
+
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/6dar_upset/'
+```
+
+```{r}
+filenames <-c('~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/peaks_inf_vs_control_allCelltypes_FC05_adjP01.xlsx',
+              '~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/peaks_adjInf_vs_control_allCelltypes_FC05_adjP01.xlsx',
+              '~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/peaks_nonInf_vs_control_allCelltypes_FC05_adjP01.xlsx',
+              '~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/peaks_control_vs_inf_allCelltypes_FC05_adjP01.xlsx',
+              '~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/peaks_control_vs_adjInf_allCelltypes_FC05_adjP01.xlsx',
+              '~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/peaks_control_vs_nonInf_allCelltypes_FC05_adjP01.xlsx')
+contrast_names <- c('inf_vs_control', 'adjInf_vs_control', 'nonInf_vs_control',
+                    'control_vs_inf', 'control_vs_adjInf', 'control_vs_nonInf') 
+
+peaks_all_contrasts_list <- list()
+
+for (i in 1:6) {
+  filename <- filenames[[i]]
+  sheets <- readxl::excel_sheets(filename)
+  x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X, col_names = F))
+  x <- lapply(x, as.data.frame)
+  names(x) <- sheets
+  peaks_all_contrasts_list[[contrast_names[[i]]]] <- x
+}
+```
+
+
+##################  ################ ##################  ################
+1. disease direction
+
+```{r}
+cts_plot <- c('AC_Goblet', 'TI_Goblet', 'Enterocyte', 'Early_Enterocyte', 'Colonocyte', 'Early_Colonocyte')
+
+for (ct in cts_plot) {
+  DARs_plot <- list(inf_vs_control = peaks_all_contrasts_list$inf_vs_control[[ct]][[1]],
+                  adjInf_vs_control = peaks_all_contrasts_list$adjInf_vs_control[[ct]][[1]],
+                  nonInf_vs_control = peaks_all_contrasts_list$nonInf_vs_control[[ct]][[1]])
+
+  # comprehensive
+  set_order <- c('inf_vs_control', 'adjInf_vs_control', 'nonInf_vs_control')
+  m1 = make_comb_mat(DARs_plot[set_order], mode = "intersect")
+  m2 <- m1[comb_degree(m1)%in%c(2,3)]
+  ss <- set_size(m2)
+  cs <- comb_size(m2)
+  
+  # plot
+  pdf(paste0(out.dir, ct, '_disease.pdf'), width = 8, height = 4, pointsize = 1)
+  
+  # set colors for top bars
+  combo_colors <- c("#80b1d3",  "#80b1d3","#80b1d3", "#80b1d3")
+  row_colors <- c("#80b1d3", "#80b1d3", "#80b1d3","#80b1d3")
+  
+  rownames_gp <- gpar(fontsize = 10, fontface = "bold", col = "blue")
+  
+  ht <- UpSet(
+    m2,
+    set_order = set_order,
+    comb_col = combo_colors,
+    top_annotation = HeatmapAnnotation(
+      "# Open regions" = anno_barplot(
+        cs,
+        axis = T,
+        axis_param = list(gp = gpar(fontsize =
+                                      10)),
+        ylim = c(0, max(cs) * 1.1),
+        border = FALSE,
+        gp = gpar(fill = combo_colors),
+        height = unit(4, "cm")
+      ),
+      annotation_name_side = "left",
+      annotation_name_rot = 90,
+      annotation_name_gp = gpar(fontsize = 12)
+    ),
+    
+    right_annotation =  rowAnnotation(
+      "DARs per contrast" = anno_barplot(
+        ss,
+        baseline = 0,
+        axis = T,
+        axis_param = list(
+          gp = gpar(fontsize = 10),
+          at = c(0, 10000, 20000, 30000, 40000, 50000),
+          labels = c(0, 10000, 20000, 30000, 40000, 50000),
+          labels_rot = 45
+        ),
+        border = FALSE,
+        extend = 0.5,
+        gp = gpar(fill = row_colors),
+        width = unit(6, "cm")
+      ),
+    annotation_name_gp = gpar(fontsize = 12)
+  ))
+  
+  ht = draw(ht)
+  od = column_order(ht)
+  rod = row_order(ht)
+  decorate_annotation(
+    "# Open regions", {
+      grid.text(cs[od], x = seq_along(cs), y = unit(cs[od], "native") + unit(2, "pt"),
+                default.units = "native", just = c("center", "bottom"),
+                gp = gpar(fontsize = 10, col = "black", lwd=3), rot = 0)})
+  
+  decorate_annotation(
+    "DARs per contrast", {
+      grid.text(ss[rod], y = seq_along(ss) %>% rev(), x = unit(ss[rod], "native") + unit(1, "cm"),
+                default.units = "native", just = c("right", "center"),
+                gp = gpar(fontsize = 10, col = "black", lwd=3), rot = 0)})
+  
+  dev.off()
+}
+```
+
+
+
+##################  ################ ##################  ################
+2. healthy direction
+
+```{r}
+cts_plot <- c('AC_Goblet', 'TI_Goblet', 'Enterocyte', 'Early_Enterocyte', 'Colonocyte', 'Early_Colonocyte')
+
+for (ct in cts_plot) {
+  DARs_plot <- list(control_vs_inf = peaks_all_contrasts_list$control_vs_inf[[ct]][[1]],
+                    control_vs_adjInf = peaks_all_contrasts_list$control_vs_adjInf[[ct]][[1]],
+                    control_vs_nonInf = peaks_all_contrasts_list$control_vs_nonInf[[ct]][[1]])
+  
+  # comprehensive
+  set_order <- c('control_vs_inf', 'control_vs_adjInf', 'control_vs_nonInf')
+  m1 = make_comb_mat(DARs_plot[set_order], mode = "intersect")
+  m2 <- m1[comb_degree(m1)%in%c(2,3)]
+  ss <- set_size(m2)
+  cs <- comb_size(m2)
+  
+  # plot
+  pdf(paste0(out.dir, ct, '_healthy.pdf'), width = 8, height = 4, pointsize = 1)
+  
+  # set colors for top bars
+  combo_colors <- c("#80b1d3",  "#80b1d3","#80b1d3", "#80b1d3")
+  row_colors <- c("#80b1d3", "#80b1d3", "#80b1d3","#80b1d3")
+  
+  rownames_gp <- gpar(fontsize = 10, fontface = "bold", col = "blue")
+  
+  ht <- UpSet(
+    m2,
+    set_order = set_order,
+    comb_col = combo_colors,
+    top_annotation = HeatmapAnnotation(
+      "# Open regions" = anno_barplot(
+        cs,
+        axis = T,
+        axis_param = list(gp = gpar(fontsize =
+                                      10)),
+        ylim = c(0, max(cs) * 1.1),
+        border = FALSE,
+        gp = gpar(fill = combo_colors),
+        height = unit(4, "cm")
+      ),
+      annotation_name_side = "left",
+      annotation_name_rot = 90,
+      annotation_name_gp = gpar(fontsize = 12)
+    ),
+    
+    right_annotation =  rowAnnotation(
+      "DARs per contrast" = anno_barplot(
+        ss,
+        baseline = 0,
+        axis = T,
+        axis_param = list(
+          gp = gpar(fontsize = 10),
+          at = c(0, 10000, 20000, 30000, 40000, 50000),
+          labels = c(0, 10000, 20000, 30000, 40000, 50000),
+          labels_rot = 45
+        ),
+        border = FALSE,
+        extend = 0.5,
+        gp = gpar(fill = row_colors),
+        width = unit(6, "cm")
+      ),
+    annotation_name_gp = gpar(fontsize = 12)
+  ))
+  
+  ht = draw(ht)
+  od = column_order(ht)
+  rod = row_order(ht)
+  decorate_annotation(
+    "# Open regions", {
+      grid.text(cs[od], x = seq_along(cs), y = unit(cs[od], "native") + unit(2, "pt"),
+                default.units = "native", just = c("center", "bottom"),
+                gp = gpar(fontsize = 10, col = "black", lwd=3), rot = 0)})
+  
+  decorate_annotation(
+    "DARs per contrast", {
+      grid.text(ss[rod], y = seq_along(ss) %>% rev(), x = unit(ss[rod], "native") + unit(1, "cm"),
+                default.units = "native", just = c("right", "center"),
+                gp = gpar(fontsize = 10, col = "black", lwd=3), rot = 0)})
+  
+  dev.off()
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

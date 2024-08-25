@@ -1,0 +1,227 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(motifbreakR)
+library(SNPlocs.Hsapiens.dbSNP150.GRCh38) 
+library(BSgenome.Hsapiens.UCSC.hg38)     
+library(BSgenome)
+library(plyr)
+library(dplyr)
+library(stringr)
+library(tibble)
+library(Seurat)
+library(ArchR)
+library(ashr)
+library(mashr)
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/10mashQTL_motifBreak_part2/linear_cor_example/'
+```
+
+```{r}
+check_snp_in_peak <- function(peak, snp){
+  flag <- 0
+  a.chr <- snp %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,1)
+  a.pos <- snp %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric()
+  b.chr <- peak %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,1)
+  b.start <- peak %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric()
+  b.end <- peak %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,3) %>% as.numeric()
+  if(a.chr == b.chr & a.pos >= b.start & a.pos <= b.end){
+    flag <- 1
+  }
+  return(flag)
+}
+```
+
+```{r}
+# read mash QTL results
+celltypes <- readLines('~/yuzhao1/work/atac_gca2024/26motif_disruption3/00celltypes.txt')
+
+prep.dir <- '~/yuzhao1/work/atac_gca2024/26mash3/1select_qtl/'
+df_effect <- readRDS(paste0(prep.dir, 'df_effect_query.rds'))
+df_effect$Feature_ID <- df_effect %>% rownames() %>% strsplit(split = '@', fixed=T) %>% sapply(.,`[[`,1) %>% unlist()
+df_effect$rsID <- df_effect %>% rownames() %>% strsplit(split = '@', fixed=T) %>% sapply(.,`[[`,2) %>% unlist()
+df_effect$REF <- df_effect$rsID %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,3) %>% unlist()
+df_effect$ALT <- df_effect$rsID %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,4) %>% unlist()
+df_effect$chr <- df_effect$rsID %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,1) %>% unlist()
+df_effect$pos <- df_effect$rsID %>% strsplit(split = ':', fixed=T) %>% sapply(.,`[[`,2) %>% unlist()
+df_effect$chr_pos <- paste0(df_effect$chr, '_', df_effect$pos, '_', df_effect$pos)
+
+df_lfsr <- readRDS('~/yuzhao1/work/atac_gca2024/26mash3/2mash/df_lfsr.rds')
+df_lfsr %<>% as.data.frame()
+df_lfsr$Feature_ID <- df_lfsr %>% rownames() %>% strsplit(split = '@', fixed=T) %>% sapply(.,`[[`,1) %>% unlist()
+df_lfsr$rsID <- df_lfsr %>% rownames() %>% strsplit(split = '@', fixed=T) %>% sapply(.,`[[`,2) %>% unlist()
+
+
+qtls_ctList <- list()
+for (xx in celltypes) {
+  qtls_ctList[[xx]] <- rownames(df_lfsr)[df_lfsr[, xx] <= 0.05]
+}
+```
+
+```{r}
+# read motif breaking information
+motif.breaks.all_unique <- readRDS('~/yuzhao1/work/atac_gca2024/26motif_disruption3/3results_summary/motif.breaks.all_unique.rds')
+
+# read correlation results
+correlation_dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/10mashQTL_motifBreak_part1/'
+df_cor <- readRDS(paste0(correlation_dir, 'df_cor.rds'))
+df_adjp <- readRDS(paste0(correlation_dir, 'df_adjP.rds'))
+adjp_threshold <- 0.05
+```
+
+```{r}
+# settings for box plot
+snp_annotation <- read.csv('~/yuzhao1/work/atac_gca2024/24rasqual2/2annotateRSid/snps_rsID_clean.txt')
+snp_annotation$chr_pos <- paste0(snp_annotation$chr, '_', snp_annotation$pos, '_', snp_annotation$pos)
+rasqual_dir <- '~/yuzhao1/work/atac_gca2024/19rasqual/5collect_results/5results/allPeaks_noDiseaseCo/'
+counts_dir <- '~/yuzhao1/work/atac_gca2024/19rasqual/9boxplot/9.1mtx/'
+gt_dir <- '~/yuzhao1/work/atac_gca2024/19rasqual/9boxplot/9.3genotype_clean/'
+zscore=TRUE
+YLIM=NULL
+col <- c('#d53e4f', '#3288bd', '#41ab5d')
+max_y_range <- 3
+```
+
+```{r}
+tf <- 'HNF4A'
+ct <- 'TI_Stem'
+```
+
+```{r}
+for (ct in celltypes) {
+  for (tf in rownames(df_adjp)) {
+    if(df_adjp[tf, ct] > adjp_threshold){
+      next
+    }
+    dir.create(paste0(out.dir, ct), showWarnings = F)
+    dir.create(paste0(out.dir, ct, '/', tf), showWarnings = F)
+    
+    ### section 1: plot linear correlation
+    # filter for ct
+    df <- df_effect[qtls_ctList[[ct]], c(ct, 'Feature_ID', 'rsID', 'REF', 'ALT', 'chr_pos')]
+    colnames(df)[[1]] <- 'Effect_size'
+    
+    # filter for tf
+    df_disrupt_sub <- motif.breaks.all_unique[motif.breaks.all_unique$geneSymbol == tf, ]
+    df <- df[df$rsID %in% df_disrupt_sub$SNP_id, ] 
+    
+    # requiring snps in capeaks
+    df$rsID_in_FeatureID <- 0
+    for (i in 1:nrow(df)) {
+      peak <- df$Feature_ID[[i]]
+      snp <- df$rsID[[i]]
+      if(check_snp_in_peak(peak, snp)){
+        df$rsID_in_FeatureID[[i]] <- 1
+      }
+    }
+    df <- df[df$rsID_in_FeatureID == 1,]
+    
+
+    # plot linear correlations
+    df$disruption_score_alleleDiff <- mapvalues(df$rsID, from=df_disrupt_sub$SNP_id, to=df_disrupt_sub$alleleDiff, warn_missing = F) %>% as.numeric()
+    rho <- df_cor[tf, ct] %>% format(digits = 2)
+    p.plot <- df_adjp[tf, ct] %>% format(digits = 2)
+    p <- ggplot(df, aes(x=disruption_score_alleleDiff, y=Effect_size)) + 
+      geom_point(size=0.5, color='#0570b0') + 
+      # geom_point(data=df[df$rsID=='chr5:1873227:C:T', ], aes(x=disruption_score_alleleDiff, y=Effect_size), colour="#b2182b", size=1) + # select the point to highlight
+      geom_smooth(method="lm", col="black", formula = 'y ~ x', fill = '#e7298a', size=0.5) + 
+      theme_pubr() + # Use ggpubr theme
+      theme(axis.title = element_text(size = 8, face = 'bold'),
+            axis.text.y = element_text(size = 8),
+            axis.text.x = element_text(size = 8),
+            plot.title = element_text(hjust = 0.5, size=8),
+            legend.position = "bottom") +
+      labs(title = paste0(tf, '@', ct, ', rho=', rho, ', p.adj=', p.plot), x = "disruption_score_alleleDiff", y = "Effect_size")
+    
+    pdf(paste0(out.dir, ct, '/', tf, '.pdf'), height = 3, width = 3)
+    print(p)
+    dev.off()
+    
+    ### section 2: plot top QTL snps
+    df_fix1 <- data.frame(df)
+    nTopQTL <- min(10, nrow(df_fix1))
+    df_plot <- df_fix1[order(df_fix1$Effect_size, decreasing = T), ]
+    df_plot <- df_plot[1:nTopQTL,]
+
+    for(i in 1:nrow(df_plot)){
+        ct <- ct
+        gt_file <- paste0(gt_dir, ct, '_genotypes.tsv')
+        counts <- paste0(counts_dir,ct ,'.vst.count_matrix')
+        
+        peak <- df_plot[i, 'Feature_ID']
+        rsIDs_qtl <- df_plot[i, 'rsID']
+        qtl_pair_name <- paste0(peak, '@', rsIDs_qtl)
+        rsID_standard <- mapvalues(df_plot[i, 'chr_pos'], snp_annotation$chr_pos, snp_annotation$rsID, warn_missing = F)
+        lfsr_value <- format(df_lfsr[qtl_pair_name, ct], scientific = T, digits = 2)
+    
+        genot = c(paste0(df_plot[i, 'REF'], df_plot[i, 'REF']), 
+                  paste0(df_plot[i, 'REF'], df_plot[i, 'ALT']), 
+                  paste0(df_plot[i, 'ALT'], df_plot[i, 'ALT']))
+        names(genot) = c(0,1,2)
+        
+        df = t(rbind(read.table(pipe(paste("grep", peak, counts)))[-1],
+                    read.table(pipe(paste("grep", rsIDs_qtl, gt_file)))[-1]))
+        df <- as.data.frame(df)
+        colnames(df) = c('peak_counts','genotype')
+        ngt <- genot[names(genot) %in% unique(df[,2])]
+        df$genotype <- mapvalues(df$genotype, names(ngt), ngt)
+        df$genotype <- factor(df$genotype, levels = ngt)
+        
+        # plot
+        dotsize <- (max(df$peak_counts) - min(df$peak_counts))/max_y_range
+        p <- ggplot(df, aes(x=genotype, y=peak_counts, fill=genotype))+
+            geom_boxplot(fill='white')+
+            geom_dotplot(binaxis='y', stackdir='center', dotsize = dotsize, binwidth = 0.1)+
+            scale_fill_manual(values=col) +
+            theme(axis.text.x = element_text(color = "black", face = "bold", size = 8,),
+                axis.text.y = element_text(color = "black", size = 8, face = "bold"),
+                axis.title = element_text(color = "black", size = 8, angle = 0, face = "bold"),
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank(),        
+                legend.position = "none",
+                plot.title = element_text(size=8, hjust=0.5),
+                panel.border = element_blank(),
+                panel.background = element_blank(),
+                axis.line = element_line(colour = "black"),)+
+            labs(x = qtl_pair_name, y = "Normalized accessibility", title = paste0(rsID_standard, ', lfsr=', lfsr_value))
+        pdf(paste0(out.dir, ct, '/', tf, '/', ct, ' - ', tf, ' - ', qtl_pair_name,  '.pdf'), width = 3, height = 3)
+        print(p)
+        dev.off()
+    }
+  }
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

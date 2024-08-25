@@ -1,0 +1,4 @@
+1. prepare the gwas, basically just add the hg38 annotation for finemapped snps
+2. first prepare all FDR0.1 results, then run mashR and get the mashR 0.05 results, then save cell type specific caPeak-snp pairs
+3. read LD information, save all gwas_snp ~ qtl_snp pairs that are in LD. (one snp could match multiple snps in the other category)
+4. check which QTL capeaks contain QTL-snps, save the peak-snp pair information. (tested all mash R snps, nothing to do with LD)

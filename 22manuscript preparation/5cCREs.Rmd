@@ -1,0 +1,85 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/5cCREs/'
+```
+
+```{r}
+df_cCREs <- readRDS('~/yuzhao1/work/atac_gca2024/16cCRE/rds/cCREs_enhancer&promoter.rds')
+```
+
+```{r}
+npeaks_nlinks <- data.frame(table(table(df_cCREs$peak)))
+colnames(npeaks_nlinks) <- c('nlinks', 'npeaks')
+df <- npeaks_nlinks
+```
+
+
+```{r}
+p <- ggplot(df, aes(x = nlinks, y = npeaks)) +
+  geom_col(fill = '#1f78b4', alpha = 0.9, width = 0.5) +
+  geom_text(aes(label=npeaks), hjust=0.5, vjust = -0.2, color="black",size=2.7, fontface = 'bold')+
+  theme_classic() +
+  theme(
+    panel.grid.major = element_line(linetype="dashed"),
+    panel.grid.minor = element_line(linetype="dashed"),
+    axis.text.x = element_text(angle=45, hjust = 1, vjust = 1, size = 10, face = 'bold', colour = 'black',),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 12, face = 'bold', colour = 'black'),
+    plot.title = element_text(size = 12, face = 'bold', colour = 'black', hjust = 0.5),
+    plot.margin = margin(1,1,1,1,'cm') 
+  )+
+  labs(title = paste0("check how many links does one peak have"), x = "n links", y = "n peaks")
+```
+
+
+```{r}
+pdf(paste0(out.dir, 'npeaks_nlinks.pdf'), width = 7, height = 7, pointsize = 1)
+print(p)
+dev.off()
+```
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

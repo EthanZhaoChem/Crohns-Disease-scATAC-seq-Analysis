@@ -1,0 +1,139 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(Repitools)
+library(readxl)  
+library(ComplexHeatmap)
+
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/6dar_select_plot/'
+```
+
+```{r}
+filenames <-c('~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/peaks_inf_vs_control_allCelltypes_FC05_adjP01_healthy.xlsx')
+contrast_names <- c('inf_vs_control') 
+
+peaks_all_contrasts_list <- list()
+
+for (i in 1:1) {
+  filename <- filenames[[i]]
+  sheets <- readxl::excel_sheets(filename)
+  x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X, col_names = F))
+  x <- lapply(x, as.data.frame)
+  names(x) <- sheets
+  peaks_all_contrasts_list[[contrast_names[[i]]]] <- x
+}
+```
+
+```{r}
+# statistics and its peakname
+#! flip the logFC for control vs inf
+raw_statistics <- readRDS('~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/statistics_inf_vs_control.rds')
+peaks_raw_statistics <- readRDS('~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/peakMtx_unbinarized_rowranges.rds')
+
+# selected peaks
+peakset_abc <- readRDS('~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/peakMtx_unbinarized_rowranges_abc_annotated.rds')
+peakset_archr <- readRDS('~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/peakSet.rds')
+peakset_archr <- peakset_archr %>% data.frame() 
+rownames(peakset_archr) <- paste0(peakset_archr$seqnames, '_', peakset_archr$start, '_', peakset_archr$end)
+
+# read important TFs
+df_TF_regulator <- readRDS('/project/gca/yuzhao1/work/atac_gca2024/5TF/output/union/regulator_df_anno1_inflammation_status_location_cor0.4_delta0.25.rds')
+TF_positive <- df_TF_regulator[df_TF_regulator$TFRegulator=='Positive', 'cisbp_matchName']
+```
+
+```{r}
+ct <- 'Enterocyte'
+t_statistics <- raw_statistics[[ct]]
+t_statistics_rowname_gr <- peaks_raw_statistics[as.numeric(rownames(t_statistics)),] %>% data.frame()
+rownames(t_statistics) <- paste0(t_statistics_rowname_gr$seqnames, '_', 
+                                 t_statistics_rowname_gr$start, '_', 
+                                 t_statistics_rowname_gr$end)
+
+ct_peaks <- peaks_all_contrasts_list$inf_vs_control[[ct]][[1]]
+df_abc <- peakset_abc[peakset_abc$archr_peak %in% ct_peaks,]
+df_abc$archrpeak_logFC <- -t_statistics[df_abc$archr_peak, 'logFC'] #! flip the logFC for control vs inf
+df_abc$archrpeak_adj.P.Val <- t_statistics[df_abc$archr_peak, 'adj.P.Val'] 
+df_archr <- peakset_archr[ct_peaks, ]
+df_archr$logFC <- -t_statistics[ct_peaks, 'logFC'] #! flip the logFC for control vs inf
+df_archr$adj.P.Val <- t_statistics[ct_peaks, 'adj.P.Val']
+```
+
+```{r}
+# count number of nearest gene
+a <- sort(table(df_archr[, 'nearestGene']), decreasing = T) %>% head(30)
+a
+View(df_archr[df_archr$nearestGene %in% names(a), ])
+
+# count number of abc linked gene
+b <- sort(table(df_abc[, 'ABC_TargetGene']), decreasing = T) %>% head(30)
+b
+View(df_abc[df_abc$ABC_TargetGene %in% names(b), ])
+```
+
+```{r}
+# select a TF gene from archr nearest gene
+sort(table(df_archr[df_archr$nearestGene %in% TF_positive, 'nearestGene']), decreasing = T)
+View(df_archr[df_archr$nearestGene %in% TF_positive, ])
+
+# select a TF gene from abc linked gene
+sort(table(df_abc[df_abc$ABC_TargetGene %in% TF_positive, 'ABC_TargetGene']), decreasing = T)
+View(df_abc[df_abc$ABC_TargetGene %in% TF_positive, ])
+```
+
+```{r}
+# # Enterocyte example
+#   CEBPD    EBF1    ELF1   EOMES   HNF1B    KLF4    KLF5   MEF2C    NFYB    NRF1    RFX3   RUNX2    SOX4   TEAD4     TEF   ATOH1    CREM   DNMT1 
+#       1       1       1       1       1       1       1       1       1       1       1       1       1       1       1       2       2       2 
+#    IRF2   PITX1    RORA   TEAD1   CREB1     MAF     MSC ONECUT2    ELK3    IRF4  NFATC1   RUNX3  NFATC2   PRDM1   GATA4 
+#       2       2       2       2       3       3       3       3       4       4       5       5       7       8      10 
+# chr8:11,699,900-11,708,407 GATA4
+# chr2:12,630,608-12,721,447 TRIB2
+
+# # CD8T 
+# chr6:152,627,422-152,642,451 SYNE1
+# chr1_10525064_10525564 PEX14
+
+# # CD4T
+# chr4:121,699,299-121,714,328 ANXA5
+
+# # Colonocyte
+# chr5:35,874,585-35,879,594 IL7R
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,149 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(Repitools)
+library(readxl)  
+library(ComplexHeatmap)
+
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/6dar/'
+```
+
+```{r}
+## read inf peaks
+filename <- '~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/peaks_inf_vs_control_allCelltypes_FC05_adjP01.xlsx'
+sheets <- readxl::excel_sheets(filename)
+x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X, col_names = F))
+x <- lapply(x, as.data.frame)
+names(x) <- sheets
+peaks_inf_vs_control_all <- unique(unlist(x))
+peaks_inf_vs_control_epithelial <- unique(unlist(x[names(gca_colors_atac_epithelial_anno1)]))
+peaks_inf_vs_control_immune <- unique(unlist(x[names(gca_colors_atac_immune_anno1)]))
+peaks_inf_vs_control_stromal <- unique(unlist(x[names(gca_colors_atac_stromal_anno1)]))
+```
+
+```{r}
+# read topic peaks
+# sort peaks for each topic
+max_peaks <- 1000
+parallel_results_dir <- '~/yuzhao1/work/atac_gca2024/13fasttopic/rds/fit_union_sub100_k45_converged_de_vsnull/'
+nTopics <- 45
+nThreads <- 20
+parallel_results <- list()
+pval_all <- matrix(0, nrow = 0, ncol = nTopics)
+postmean_all <- matrix(0, nrow = 0, ncol = nTopics)
+for (i in 1:nThreads) {
+  parallel_results[[i]] <- readRDS(paste0(parallel_results_dir, i, '.rds'))
+  pval_all <- rbind(pval_all, parallel_results[[i]]$lpval)
+  postmean_all <- rbind(postmean_all, parallel_results[[i]]$postmean)
+}
+
+peaks <- rownames(pval_all)
+topics <- list()
+for(k in 1:nTopics){
+  lpval <- pval_all[,k]
+  postmean <- postmean_all[, k]
+  
+  filtered_indices <- which(postmean > 0)
+  filtered_peaks <- peaks[filtered_indices]
+  filtered_lpval <- lpval[filtered_indices]
+  sorted_indices <- order(filtered_lpval, decreasing = T) # -log10 two-tailed p-values obtained from the z-scores.
+  sorted_peaks <- filtered_peaks[sorted_indices]
+  
+  topics[[k]] <- sorted_peaks[1:min(max_peaks, length(sorted_peaks))]
+}
+names(topics) <- paste0('Topic', 1:nTopics)
+
+
+```
+
+
+```{r}
+# calculate enrichment
+peaks_inf_vs_control <- peaks_inf_vs_control_all
+
+inf_percentages <- c()
+for(k in 1:nTopics){
+  topic_name <- paste0('Topic', k)
+  tmp_topic_peaks <- topics[[topic_name]]
+  shared_peaks <- intersect(tmp_topic_peaks, peaks_inf_vs_control)
+  inf_percentages[[topic_name]] <- length(shared_peaks)/length(peaks_inf_vs_control)
+}
+inf_percentages <- as.numeric(unlist(inf_percentages))
+names(inf_percentages) <- paste0('Topic', 1:45)
+sort(inf_percentages)/mean(inf_percentages)
+```
+
+```{r}
+# permutation
+peakset <- readRDS('~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/peakMtx_unbinarized_rowranges.rds')
+peaks_all <- paste0(seqnames(peakset), '_', start(peakset), '_', end(peakset))
+perm_percentages <- c()
+
+set.seed(26)
+for (i in 1:1000) {
+  tmp.peaks <- sample(peaks_all, 5000)
+  shared_peaks <- intersect(tmp.peaks, peaks_inf_vs_control)
+  perm_percentages[[i]] <- length(shared_peaks)/length(peaks_inf_vs_control)
+}
+perm_percentages <- unlist(perm_percentages)
+
+# check normality: yes, we can approxitely use a normal distribution
+ggqqplot(perm_percentages)
+hist(perm_percentages, breaks = 2000)
+```
+
+```{r}
+mean_permuted <- mean(perm_percentages)
+sd_permuted <- sd(perm_percentages)
+topic_enrichment_p <- c()
+
+for(k in 1:nTopics){
+  topic_name <- paste0('Topic', k)
+  tmp_inf_percentage <- inf_percentages[[topic_name]]
+  topic_enrichment_p[[topic_name]] <- 1 - pnorm(tmp_inf_percentage, mean = mean_permuted, sd = sd_permuted)
+}
+topic_enrichment_p <- unlist(topic_enrichment_p)
+topic_enrichment_adjp <- p.adjust(topic_enrichment_p, method = 'BH')
+topic_enrichment_adjp
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
