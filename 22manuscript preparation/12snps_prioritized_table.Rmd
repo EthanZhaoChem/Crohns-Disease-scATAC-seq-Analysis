@@ -1,0 +1,126 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
+snp_annotation <- read.csv('~/yuzhao1/work/atac_gca2024/24rasqual2/2annotateRSid/snps_rsID_clean.txt')
+```
+
+```{r}
+# read GWAS supp table
+library(readxl)
+filename <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Prioritization of GWAS finemapped SNPs.xlsx'
+sheets <- readxl::excel_sheets(filename)
+x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X,  col_types = 'guess'))
+x <- lapply(x, as.data.frame)
+names(x) <- sheets
+gwas_prioritized_table1 <- x$`All GWAS finemapped SNPs`
+gwas_prioritized_table2 <- x$`QTL overlapping details`
+rownames(gwas_prioritized_table1) <- gwas_prioritized_table1$GWAS_snp
+```
+
+```{r}
+# make a nice table: df_prioritized (df saved the raw information)
+pip_top_threshold <- 0.2
+df <- gwas_prioritized_table1[which(gwas_prioritized_table1$finemap_susie_pip >= pip_top_threshold &
+                                      gwas_prioritized_table1$overlapped_cCRE !='' &
+                                      gwas_prioritized_table1$Affected_by_HLA == 'No'),]
+df <- df[order(df$finemap_susie_pip, decreasing = T),]
+df$finemap_susie_pip <- format(df$finemap_susie_pip, digits=2) %>% as.numeric()
+df$snp_nearest_gene_distance <- as.numeric(df$snp_nearest_gene_distance)
+df_prioritized <- data.frame(matrix('', nrow = nrow(df), ncol = 12))
+colnames(df_prioritized) <- c('rsID', 'Chromosome', 'Position', 'PIP', 'cCRE', 'Associated gene', 'Link method',  'Celltype specific', 'iDAR', 'Known IBD risk Gene', 'finemapped_with_ukbb', 'Reference [PMID]')
+
+for (i in 1:nrow(df)) {
+  df_prioritized[i, 'rsID'] <- df[i, 'GWAS_snp']
+  df_prioritized[i, 'Chromosome'] <- df[i, 'Chromosome']
+  df_prioritized[i, 'Position'] <- df[i, 'Position']
+  df_prioritized[i, 'finemapped_with_ukbb'] <- df[i, 'finemapped_with_ukbb']
+  df_prioritized[i, 'PIP'] <- df[i, 'finemap_susie_pip']
+  df_prioritized[i, 'cCRE'] <- df[i, 'overlapped_cCRE'] %>% sub("_", ":", .) %>% sub("_", "-", .)
+  df_prioritized[i, 'Celltype specific'] <- ifelse(is.na(df[i, 'overlapped_cCRE_differentially_upRegulated_celltype']), '', 'Y')
+  df_prioritized[i, 'iDAR'] <- ifelse(is.na(df[i, 'overlappedPeak_upRegulated_inflamed_vs_control']), '', 'Y')
+  
+  if(!is.na(df[i, 'overlapped_cCRE_co-active_gene'])){
+    df_prioritized[i, 'Associated gene'] <- df[i, 'overlapped_cCRE_co-active_gene'] %>% gsub("&", ", ", .)
+    df_prioritized[i, 'Link method'] <- 'Co-activity'
+    next
+  }
+  
+  if(!is.na(df[i, 'overlapped_abcPeak_ABCmaxGene'] != '')){
+    df_prioritized[i, 'Associated gene'] <- df[i, 'overlapped_abcPeak_ABCmaxGene']
+    df_prioritized[i, 'Link method'] <- 'ABC'
+    next
+  }
+  
+  if(df[i, 'snp_nearest_gene_distance'] < 20000){
+    df_prioritized[i, 'Associated gene'] <- df[i, 'snp_nearest_gene_name']
+    df_prioritized[i, 'Link method'] <- 'Nearest'
+    next
+  }
+}
+```
+
+```{r}
+# prepare references for the table in google drive
+write.csv(df_prioritized, '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/main_table_snps_prioritized.csv')
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

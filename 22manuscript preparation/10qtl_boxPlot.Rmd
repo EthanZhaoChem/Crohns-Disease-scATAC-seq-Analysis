@@ -1,0 +1,169 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 5, fig.width = 5)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/10qtl_boxPlot/prioritized_snps/'
+```
+
+####################################################################
+# select peaks snps to plot 
+
+```{r}
+# update gwas finemapped data
+# capeaks that have lead snps overlapping with gwas
+gwas_overlapped_snp_pairs <- read.csv('/project/gca/yuzhao1/work/atac_gca2024/19rasqual/8LDoverlap/8.3qtls_gwas_overlap/gwas_caQTL_mash_LD08.csv', row.names = 1)
+df_inside_peak_snp <- read.csv('/project/gca/yuzhao1/work/atac_gca2024/19rasqual/8LDoverlap/8.4qtls_peakset_overlap/caQTL_leadsnp_within_caPeak.csv', row.names = 1)
+qtls_caPeaks_mash <- read.csv('/project/gca/yuzhao1/work/atac_gca2024/19rasqual/8LDoverlap/caQTL/qtls_caPeaks_df_mash.csv', row.names = 1)
+gwas_finemapped <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10/gwas_finemapped_processed.csv', row.names = 1)
+qtls_caPeaks_mash$hg38_name <- paste0(qtls_caPeaks_mash$Chromosome, '_', qtls_caPeaks_mash$SNP_position, '_', qtls_caPeaks_mash$SNP_position)
+
+# called snps
+FDR_results_list <- readRDS('~/yuzhao1/work/atac_gca2024/19rasqual/8LDoverlap/caQTL/FDR_results_list.rds')
+rasqual_results <- bind_rows(FDR_results_list, .id = 'ct') %>% as.data.frame()
+rasqual_results <- rasqual_results[order(rasqual_results$q, decreasing = F),]
+rasqual_results$hg38_name <- paste0(rasqual_results$Chromosome, '_', rasqual_results$SNP_position, '_', rasqual_results$SNP_position)
+
+# mash lfsr
+df_lfsr <- readRDS('~/yuzhao1/work/atac_gca2024/19rasqual/7shareness/plots/7.2/df_lfsr.rds')
+```
+
+####################################################################
+# prepare for plots: top QTL for each ct
+
+```{r}
+top_caPeaks <- rasqual_top$Feature_ID
+top_cts <- rasqual_top$ct
+```
+
+####################################################################
+# prepare for plots: qtls overlapped with prioritized gwas snps: manu/snp_prioritization folder
+
+```{r}
+library(readxl)    
+filename <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Prioritization of GWAS finemapped SNPs.xlsx'
+sheets <- readxl::excel_sheets(filename)
+x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X))
+x <- lapply(x, as.data.frame)
+names(x) <- sheets
+gwas_prioritized_overlapped_qtls <- x$`QTL overlapping details`
+gwas_hla_snps <- x$`All GWAS finemapped SNPs`$GWAS_snp[x$`All GWAS finemapped SNPs`$Affected_by_HLA == 'Yes']
+```
+
+```{r}
+# subset to those you want to plot
+gwas_prioritized_overlapped_qtls <- gwas_prioritized_overlapped_qtls[gwas_prioritized_overlapped_qtls$QTL_caPeak_overlapped_abcPeak_ABCmaxGene!='' | 
+                                                                         gwas_prioritized_overlapped_qtls$`QTL_caPeak_co-active_gene`!='',]
+gwas_prioritized_overlapped_qtls <- gwas_prioritized_overlapped_qtls[gwas_prioritized_overlapped_qtls$finemap_susie_pip >= 0.1,]
+# gwas_prioritized_overlapped_qtls <- gwas_prioritized_overlapped_qtls[gwas_prioritized_overlapped_qtls$QTL_snp_in_caPeak=='Yes',]
+gwas_prioritized_overlapped_qtls <- gwas_prioritized_overlapped_qtls[!gwas_prioritized_overlapped_qtls$GWAS_snp %in% gwas_hla_snps, ]
+
+top_caPeaks <- gwas_prioritized_overlapped_qtls$QTL_caPeak
+top_cts <- gwas_prioritized_overlapped_qtls$QTL_significant_cellType
+top_rsIDs_gwas <- gwas_prioritized_overlapped_qtls$GWAS_snp
+top_rsIDs_qtl <- gwas_prioritized_overlapped_qtls$QTL_snp
+```
+
+
+
+####################################################################
+# prepare for plots
+```{r}
+celltypes <- readLines('~/yuzhao1/work/atac_gca2024/19rasqual/00celltypes_filtered.txt')
+rasqual_dir <- '~/yuzhao1/work/atac_gca2024/19rasqual/5collect_results/5results/allPeaks_noDiseaseCo/'
+counts_dir <- '~/yuzhao1/work/atac_gca2024/19rasqual/9boxplot/9.1mtx/'
+gt_dir <- '~/yuzhao1/work/atac_gca2024/19rasqual/9boxplot/9.3genotype_clean/'
+```
+
+```{r}
+zscore=TRUE
+YLIM=NULL
+col <- c('#d53e4f', '#3288bd', '#41ab5d')
+max_y_range <- 3
+
+for(i in 1:length(top_caPeaks)){
+    ct <- top_cts[[i]]
+    peak <- top_caPeaks[[i]]
+    rsIDs_qtl <- top_rsIDs_qtl[[i]]
+    rsIDs_gwas <- top_rsIDs_gwas[[i]]
+    t.lfsr <- df_lfsr[peak, ct] %>% format(., digits = 2, scientific = T)
+    
+    gt_file <- paste0(gt_dir, ct, '_genotypes.tsv')
+    rasqual_results <- readRDS(paste0(rasqual_dir, ct, '_lead.rds'))
+    counts <- paste0(counts_dir,ct ,'.vst.count_matrix')
+
+    rasq <- data.frame(subset(rasqual_results, rasqual_results$Feature_ID == peak))
+    q_value <- format(rasq[1, 'q'] %>% as.numeric(), scientific = T, digits = 2)
+    p_value <- format(rasq[1, 'P'] %>% as.numeric(), scientific = T, digits = 2)
+
+    snp = rasq$rsID
+    genot = c(paste0(rasq[,5],rasq[,5]), paste0(rasq[,5],rasq[,6]), paste0(rasq[,6],rasq[,6]))
+    names(genot) = c(0,1,2)
+    
+    df = t(rbind(read.table(pipe(paste("grep", peak, counts)))[-1],
+                read.table(pipe(paste("grep", snp, gt_file)))[-1]))
+    df <- as.data.frame(df)
+    colnames(df) = c('peak_counts','genotype')
+    ngt <- genot[names(genot) %in% unique(df[,2])]
+    df$genotype <- mapvalues(df$genotype, names(ngt), ngt)
+    df$genotype <- factor(df$genotype, levels = ngt)
+    
+    # plot
+    dotsize <- (max(df$peak_counts) - min(df$peak_counts))/max_y_range
+    p <- ggplot(df, aes(x=genotype, y=peak_counts, fill=genotype))+
+        geom_boxplot(fill='white')+
+        geom_dotplot(binaxis='y', stackdir='center', dotsize = dotsize, binwidth = 0.1)+
+        scale_fill_manual(values=col) +
+        theme(axis.text.x = element_text(color = "black", face = "bold", size = 10,),
+            axis.text.y = element_text(color = "black", size = 10, face = "bold"),
+            plot.title = element_text(color = "black", size = 10),
+            axis.title = element_text(color = "black", size = 10, angle = 0, face = "bold"),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),        
+            legend.position = "none",
+            panel.border = element_blank(),
+            panel.background = element_blank(),
+            axis.line = element_line(colour = "black"),)+
+        labs(x = rsIDs_qtl, y = "Normalized accessibility", title = paste0('q=', q_value, ', P=', p_value, ', lfsr=', t.lfsr))
+    
+    dir.create(paste0(out.dir, 'GWAS-', rsIDs_gwas), showWarnings = F)    
+    pdf(paste0(out.dir, 'GWAS-', rsIDs_gwas, '/', 'QTL-', rsIDs_qtl, '-', ct, '-', snp, '-', peak, '.pdf'), width = 4, height = 4)
+    print(p)
+    dev.off()
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

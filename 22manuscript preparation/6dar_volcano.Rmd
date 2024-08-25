@@ -1,0 +1,98 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Repitools)
+library(readxl)  
+library(ComplexHeatmap)
+library(gapminder)
+library(tidyr)
+library(purrr)
+library(gt)
+library(mmtable2)
+library(ArchR)
+addArchRThreads(1)
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/6dar_volcano/'
+```
+
+```{r}
+raw_statistics <- readRDS('~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/statistics_inf_vs_control.rds')
+celltype_names <- names(raw_statistics)
+```
+
+
+
+```{r}
+####################### volcano plot ####################################
+celltype <- 'CD8T'
+logFC_threshold <- 0.5
+mlog_adjp_threshold <- 1
+plot.title <- paste0('DAR_volcano_', celltype, '_FC_', logFC_threshold, '_mlog_adjp_', mlog_adjp_threshold)
+
+# df
+df <- raw_statistics[[celltype]]
+df$mlog_adjp <- -log10(df$adj.P.Val)
+df <- df %>%
+  mutate(Significant = ifelse(abs(logFC) > logFC_threshold & mlog_adjp > mlog_adjp_threshold, "Significant", "Not Significant"))
+
+p <- ggscatter(df, x = 'logFC', y = 'mlog_adjp', color = 'Significant', size = 2) +
+  theme_pubr() +
+  scale_color_manual(values = c("Not Significant" = "#bdbdbd", "Significant" = "#fd8d3c")) +
+  theme(axis.title = element_text(size = 12, face = 'bold'),
+        axis.text = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom")+
+  # geom_text_repel(aes(label=label),
+  #                 nudge_y = 0, max.overlaps = 1000, min.segment.length = 0.01,
+  #                 size = 2, force = 20) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_hline(yintercept = mlog_adjp_threshold, linetype = "dashed") +
+  geom_vline(xintercept = c(-logFC_threshold, logFC_threshold), linetype = "dashed") +
+  guides(color=guide_legend(title=""))+
+  labs(title=paste0(celltype),
+       x = "Log2 Fold Change",
+       y = "-log10(P-value)",
+       color = "Significance") +
+  theme(legend.position = "bottom")
+
+# check number
+sum(df$logFC > logFC_threshold & df$mlog_adjp > mlog_adjp_threshold)
+sum(df$logFC < -logFC_threshold & df$mlog_adjp > mlog_adjp_threshold)
+
+# plot
+pdf(paste0(out.dir, plot.title, '.pdf'), width = 5, height = 5)
+print(p)
+dev.off()
+
+png(paste0(out.dir, plot.title, '.png'), width = 2000, height = 2000, res = 300)
+print(p)
+dev.off()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

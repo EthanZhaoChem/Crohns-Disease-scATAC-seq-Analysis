@@ -1,0 +1,225 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(SNPlocs.Hsapiens.dbSNP150.GRCh38) 
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(BSgenome.Hsapiens.UCSC.hg38)     
+library(BSgenome)
+library(plyr)
+library(dplyr)
+library(stringr)
+library(tibble)
+library(Seurat)
+library(ArchR)
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/7rasqual_QC/'
+```
+
+
+# 1. Number of individuals for QTL calling
+
+```{r}
+dir_ID_perCt <- '/project/gca/yuzhao1/work/atac_gca2024/19rasqual/0patientID_perCelltype/'
+```
+
+```{r}
+cts <- readLines('/project/gca/yuzhao1/work/atac_gca2024/19rasqual/00celltypes_filtered.txt')
+cts <- cts[order(match(cts, names(gca_colors_atac_union_anno1)))]
+
+df <- data.frame(matrix(nrow = length(cts), ncol = 2))
+rownames(df) <- cts
+colnames(df) <- c('all', 'ct')
+df$ct <- rownames(df)
+
+for (ct in cts) {
+  IDs <- readLines(paste0(dir_ID_perCt, ct, '.txt'))
+  df[ct, 'all'] <- length(IDs)
+}
+
+df$ct <- factor(df$ct, levels = cts)
+```
+
+```{r}
+p <- ggplot(df, aes(x = ct, y = all, fill = ct)) +
+  geom_bar(stat = "identity", width = 0.6, color = 'black', size = 0.2) +
+  scale_fill_manual(values = gca_colors_atac_union_anno1) + 
+  theme_pubr()+
+  theme(axis.text.y = element_text(size=8),
+  	  axis.text.x = element_text(size=8, angle=45, hjust = 1, vjust = 1),
+  	  axis.title = element_text(size=8),
+  	  legend.position="none",
+  	  plot.margin = margin(1,1,1,1,'cm'),
+  	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+  labs(title = paste0('Number of individuals'),
+       x = "",
+       y = "")
+
+pdf(paste0(out.dir, 'Number of individuals for QTL calling.pdf'), height = 4, width = 4.5)
+print(p)
+dev.off()
+```
+
+
+# 2. Number of caPeaks for each ct
+
+```{r}
+filename_rds <- paste0('~/yuzhao1/work/atac_gca2024/24rasqual2/1rasqual_results/FDR_results_list.rds')
+FDR_results_list <- readRDS(filename_rds)
+specified_feature <- 'Feature_ID'
+```
+
+```{r}
+df <- data.frame(celltypes = names(FDR_results_list), 
+                 caQTLs = sapply(FDR_results_list, function(df) length(unique(df[[specified_feature]]))))
+
+df <- df[order(df$caQTLs, decreasing = T),]
+df$celltypes <- factor(df$celltypes, levels=df$celltypes)
+
+p <- ggplot(df, aes(x = celltypes, y = caQTLs)) +
+  geom_col(aes(fill = celltypes), width = 0.6,  color = 'black', size = 0.2) +
+  geom_text(aes(label=caQTLs), hjust=0.5, vjust = -0.2, color="black",size=2.5, fontface = 'bold')+
+  scale_fill_manual(values = gca_colors_atac_union_anno1) + 
+  scale_y_log10() +
+  theme_pubr()+
+  theme(axis.text.y = element_text(size=8),
+  	  axis.text.x = element_text(size=8, angle=45, hjust = 1, vjust = 1),
+  	  axis.title = element_text(size=8),
+  	  legend.position="none",
+  	  plot.margin = margin(1,1,1,1,'cm'),
+  	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+  labs(title = paste0(""), x = "Cell type", y = "Number of caPeak")
+
+pdf(paste0(out.dir, 'Number of caPeaks in each cell type.pdf'), width = 8, height = 4, pointsize = 1)
+print(p)
+dev.off()
+
+```
+
+
+# 3. correlation of Number of caPeaks with number of cells per CT
+
+```{r}
+filename_rds <- paste0('~/yuzhao1/work/atac_gca2024/24rasqual2/1rasqual_results/FDR_results_list.rds')
+FDR_results_list <- readRDS(filename_rds)
+specified_feature <- 'Feature_ID'
+```
+
+```{r}
+df <- data.frame(celltypes = names(FDR_results_list), 
+                 caQTLs = sapply(FDR_results_list, function(df) length(unique(df[[specified_feature]]))))
+
+df <- df[order(df$caQTLs, decreasing = T),]
+df$celltypes <- factor(df$celltypes, levels=df$celltypes)
+```
+
+```{r}
+proj.union <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+cells_metadata <- as.data.frame(proj.union@cellColData)
+ncells_cluster <- data.frame(unclass(table(cells_metadata$anno1)))
+colnames(ncells_cluster) <- 'ncells'
+df$ncells <- ncells_cluster[rownames(df), 'ncells']
+```
+
+```{r}
+xx <- cor.test(df$caQTLs, df$ncells, method = 'spearman')
+rho <- xx$estimate %>% format(digits = 2)
+p.plot <- xx$p.value %>% format(digits = 2)
+```
+
+```{r}
+p <- ggplot(df, aes(x=ncells, y=caQTLs)) + 
+  geom_smooth(method="lm", col="black", formula = 'y ~ x', fill = '#a6cee3', size=0.5) + 
+  geom_point(size=0.5, color='#0570b0') + 
+  scale_y_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  theme_pubr() + # Use ggpubr theme
+  theme(axis.title = element_text(size = 8, face = 'bold'),
+        axis.text.y = element_text(size = 8),
+        axis.text.x = element_text(size = 8),
+        plot.title = element_text(hjust = 0.5, size=8),
+        legend.position = "bottom") +
+  labs(title = '', x = "number of cells", y = "number of caQTLs")
+
+pdf(paste0(out.dir, 'cor_ncells_nQTLs.pdf'), height = 3, width = 3)
+print(p)
+dev.off()
+```
+
+# 4. genotyping effective ratio & coverage depth
+
+```{r}
+# effective ratio
+df <- read.csv('/project/gca/yuzhao1/work/final_GCAatac/18glimpse/5.1coverage_breadth/00summary_patient_bam.csv', row.names = 1)
+df$ID <- rownames(df)
+df$coverage_depth <- 0 
+
+# coverage depth
+dir2 <- '/project/gca/yuzhao1/work/final_GCAatac/18glimpse/5.3coverage_depth/'
+for (ID in df$ID) {
+  tmp.path <- paste0(dir2, ID, '.bam')
+  tmp.coverage <- readLines(tmp.path)
+  df[ID, 'coverage_depth'] <- tmp.coverage
+}
+df$coverage_depth <- as.numeric(sub(".*=\\s*", "", df$coverage_depth))
+
+```
+
+```{r}
+p <- ggboxplot(df, y = "eff_coverage", outlier.shape = NA, bxp.errorbar=T, bxp.errorbar.width = 0.2, fill = '#fee391') +
+  geom_jitter(colour = 'black', width = 0.18, size=0.3)+
+    scale_y_continuous(limits = c(0, 3.6)) +
+  scale_fill_manual(values = 'black') +
+  theme(axis.text.x = element_text(color = "black", face = "bold", size = 8,),
+        axis.text.y = element_text(color = "black", size = 8, face = "bold"),
+        axis.title = element_text(color = "black", size = 8, angle = 0, face = "bold"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),      
+        legend.position = "none",
+        strip.background = element_rect(fill = "white", colour = "white")
+  )+
+  labs(x = "", y = "Effective coverage", title = "")
+pdf(paste0(out.dir, 'Effective coverage', 
+           ', min=', min(df$eff_coverage) %>% format(., digits = 2), 
+           ', max=', max(df$eff_coverage) %>% format(., digits = 2),
+           ', mean=', mean(df$eff_coverage) %>% format(., digits = 2),
+           ', var=', var(df$eff_coverage) %>% format(., digits = 2), '.pdf'), width = 1.5, height = 4, pointsize = 1)
+print(p)
+dev.off()
+```
+
+```{r}
+p <- ggboxplot(df, y = "coverage_depth", outlier.shape = NA, bxp.errorbar=T, bxp.errorbar.width = 0.2, fill = '#fee391') +
+  geom_jitter(colour = 'black', width = 0.18, size=0.3)+
+    scale_y_continuous(limits = c(0, 30)) +
+  scale_fill_manual(values = 'black') +
+  theme(axis.text.x = element_text(color = "black", face = "bold", size = 8,),
+        axis.text.y = element_text(color = "black", size = 8, face = "bold"),
+        axis.title = element_text(color = "black", size = 8, angle = 0, face = "bold"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),      
+        legend.position = "none",
+        strip.background = element_rect(fill = "white", colour = "white")
+  )+
+  labs(x = "", y = "Coverage depth", title = "")
+pdf(paste0(out.dir, 'Coverage depth', 
+           ', min=', min(df$coverage_depth) %>% format(., digits = 2), 
+           ', max=', max(df$coverage_depth) %>% format(., digits = 2),
+           ', mean=', mean(df$coverage_depth) %>% format(., digits = 2),
+           ', var=', var(df$coverage_depth) %>% format(., digits = 2), '.pdf'), width = 1.5, height = 4, pointsize = 1)
+print(p)
+dev.off()
+
+```
+

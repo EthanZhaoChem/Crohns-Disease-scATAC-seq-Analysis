@@ -1,0 +1,366 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(Repitools)
+library(readxl)  
+library(ComplexHeatmap)
+
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/6dar_count_linkedGene_and_select_TrackPlot/'
+```
+
+```{r}
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+abc.links <- readRDS('~/yuzhao1/work/atac_gca2024/22abc/abc_links_ibd.rds')
+df_abc <- readRDS('~/yuzhao1/work/atac_gca2024/22abc/abc_df_ibd.rds')
+df_abc$peak <- paste0(df_abc$chr, '_', df_abc$start, '_', df_abc$end)
+```
+
+
+# Track Plots
+
+```{r}
+plot.name <- 'Enterocyte_GATA4'
+chr.id <- 'chr8'
+highlight_start <- 11699851
+highlight_end <- 11707044
+gr.start <- highlight_start - 50000
+gr.end <- highlight_end + 30000
+ct <- 'Enterocyte'
+pal_tmp <- gca_colors_inflammation
+names(pal_tmp) <- paste0(ct, '_', names(pal_tmp))
+
+
+gr_highlight <- GRanges(seqnames = c(chr.id, chr.id),
+                        ranges = IRanges(start = c(highlight_start), end = c(highlight_end)))
+
+
+links <- abc.links
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < highlight_end & start(links$Peak2GeneLinks) > highlight_start
+                                             |  end(links$Peak2GeneLinks) < highlight_end & end(links$Peak2GeneLinks) > highlight_start 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 600,
+    highlight = gr_highlight,
+    highlightFill = '#80b1d3',
+    region = gr_plot,
+    groupBy = "anno1_inf",
+    useGroups = paste0(ct, '_', c("Control", "nonInf", "adjInf", "inf")),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = pal_tmp,
+    sizes = c(5, 0.7, 0.8),
+    loops = links
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 4.5, height = 3.6)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, plot.name, '.pdf'))
+```
+
+```{r}
+plot.name <- 'Enterocyte_TRIB2'
+chr.id <- 'chr2'
+highlight_start <- 12673000
+highlight_end <- 12677000
+gr.start <- highlight_start - 10000
+gr.end <- highlight_end + 60000
+ct <- 'Enterocyte'
+pal_tmp <- gca_colors_inflammation
+names(pal_tmp) <- paste0(ct, '_', names(pal_tmp))
+
+
+gr_highlight <- GRanges(seqnames = c(chr.id, chr.id),
+                        ranges = IRanges(start = c(highlight_start), end = c(highlight_end)))
+
+
+links <- abc.links
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < highlight_end & start(links$Peak2GeneLinks) > highlight_start
+                                             |  end(links$Peak2GeneLinks) < highlight_end & end(links$Peak2GeneLinks) > highlight_start 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 400,
+    highlight = gr_highlight,
+    highlightFill = '#80b1d3',
+    region = gr_plot,
+    groupBy = "anno1_inf",
+    useGroups = paste0(ct, '_', c("Control", "nonInf", "adjInf", "inf")),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = pal_tmp,
+    sizes = c(5, 0.7, 0.8),
+    loops = links
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 4.5, height = 3.6)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, plot.name, '.pdf'))
+```
+
+
+
+```{r}
+plot.name <- 'CD8T_PEX14'
+chr.id <- 'chr1'
+highlight_start <- 10523000
+highlight_end <- 10527000
+gr.start <- highlight_start - 60000
+gr.end <- highlight_end + 10000
+ct <- 'CD8T'
+pal_tmp <- gca_colors_inflammation
+names(pal_tmp) <- paste0(ct, '_', names(pal_tmp))
+
+
+gr_highlight <- GRanges(seqnames = c(chr.id, chr.id),
+                        ranges = IRanges(start = c(highlight_start), end = c(highlight_end)))
+
+
+links <- abc.links
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < highlight_end & start(links$Peak2GeneLinks) > highlight_start
+                                             |  end(links$Peak2GeneLinks) < highlight_end & end(links$Peak2GeneLinks) > highlight_start 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 400,
+    highlight = gr_highlight,
+    highlightFill = '#80b1d3',
+    region = gr_plot,
+    groupBy = "anno1_inf",
+    useGroups = paste0(ct, '_', c("Control", "nonInf", "adjInf", "inf")),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = pal_tmp,
+    sizes = c(5, 0.7, 0.8),
+    loops = links
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 4.5, height = 3.6)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, plot.name, '.pdf'))
+```
+
+
+```{r}
+plot.name <- 'CD4T_ANXA5'
+chr.id <- 'chr4'
+highlight_start <- 121705000
+highlight_end <- 121707500
+gr.start <- highlight_start -50000
+gr.end <- highlight_end + 10000
+ct <- 'CD4T'
+pal_tmp <- gca_colors_inflammation
+names(pal_tmp) <- paste0(ct, '_', names(pal_tmp))
+
+
+gr_highlight <- GRanges(seqnames = c(chr.id, chr.id),
+                        ranges = IRanges(start = c(highlight_start), end = c(highlight_end)))
+
+
+links <- abc.links
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < highlight_end & start(links$Peak2GeneLinks) > highlight_start
+                                             |  end(links$Peak2GeneLinks) < highlight_end & end(links$Peak2GeneLinks) > highlight_start 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 300,
+    highlight = gr_highlight,
+    highlightFill = '#80b1d3',
+    region = gr_plot,
+    groupBy = "anno1_inf",
+    useGroups = paste0(ct, '_', c("Control", "nonInf", "adjInf", "inf")),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = pal_tmp,
+    sizes = c(5, 0.7, 0.8),
+    loops = links
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 4.5, height = 3.6)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, plot.name, '.pdf'))
+```
+
+```{r}
+plot.name <- 'Colonocyte_IL7R'
+chr.id <- 'chr5'
+highlight_start <- 35875000
+highlight_end <- 35878500
+gr.start <- highlight_start -40000
+gr.end <- highlight_end + 20000
+ct <- 'Colonocyte'
+pal_tmp <- gca_colors_inflammation
+names(pal_tmp) <- paste0(ct, '_', names(pal_tmp))
+
+
+gr_highlight <- GRanges(seqnames = c(chr.id, chr.id),
+                        ranges = IRanges(start = c(highlight_start), end = c(highlight_end)))
+
+
+links <- abc.links
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < highlight_end & start(links$Peak2GeneLinks) > highlight_start
+                                             |  end(links$Peak2GeneLinks) < highlight_end & end(links$Peak2GeneLinks) > highlight_start 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 400,
+    highlight = gr_highlight,
+    highlightFill = '#80b1d3',
+    region = gr_plot,
+    groupBy = "anno1_inf",
+    useGroups = paste0(ct, '_', c("Control", "nonInf", "adjInf", "inf")),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = pal_tmp,
+    sizes = c(5, 0.7, 0.8),
+    loops = links
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 4.5, height = 3.6)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, plot.name, '.pdf'))
+```
+
+
+
+```{r}
+# overlapped cCRE 15: chr16_50692676_50693176
+plot.name <- 'NOD2_rs111164073'
+gr.start <-50692676-5000
+gr.end <-  50693176+5000
+snp.loc <- 50692911
+chr.id <- 'chr15'
+gr_highlight <- GRanges(seqnames = c(chr.id),
+                        ranges = IRanges(start = c(snp.loc-50), end = c(snp.loc+50)))
+
+
+links <- getPeak2GeneLinks(proj, corCutOff = 0.5)
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < snp.loc+250 & start(links$Peak2GeneLinks) > snp.loc-250 
+                                             | end(links$Peak2GeneLinks) < snp.loc+250 & end(links$Peak2GeneLinks) > snp.loc-250 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+gene_anno <- getGeneAnnotation(proj)
+# gene_anno$genes <- gene_anno$genes[which(gene_anno$genes$symbol=='GPR65')]
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 100,
+    highlight = gr_highlight,
+    region = gr_plot,
+    groupBy = "anno1", 
+    useGroups = names(gca_colors_atac_union_anno1),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = gca_colors_atac_union_anno1,
+    sizes = c(10, 0.5, 1.5),
+    loops = links, 
+    geneAnnotation = gene_anno
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 7)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, '/plots/snp_in_cCRE/', plot.name, '.pdf'))
+```
+
+
+```{r}
+plot.name <- 'Enterocyte_NOD2'
+chr.id <- 'chr16'
+highlight_start <- 50692676
+highlight_end <- 50693176
+gr.start <- highlight_start - 5000
+gr.end <- highlight_end + 5000
+ct <- 'Enterocyte'
+pal_tmp <- gca_colors_inflammation
+names(pal_tmp) <- paste0(ct, '_', names(pal_tmp))
+
+
+gr_highlight <- GRanges(seqnames = c(chr.id, chr.id),
+                        ranges = IRanges(start = c(highlight_start), end = c(highlight_end)))
+
+
+links <- abc.links
+links$Peak2GeneLinks <- links$Peak2GeneLinks[start(links$Peak2GeneLinks) < highlight_end & start(links$Peak2GeneLinks) > highlight_start
+                                             |  end(links$Peak2GeneLinks) < highlight_end & end(links$Peak2GeneLinks) > highlight_start 
+                                             | seqnames(links$Peak2GeneLinks) != chr.id] # include the other links to smooth the color bar
+
+# fixed code
+gr_plot <- GRanges(seqnames = c(chr.id),
+                   ranges = IRanges(start = c(gr.start), end = c(gr.end)))
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    tileSize = 25,
+    highlight = gr_highlight,
+    highlightFill = '#80b1d3',
+    region = gr_plot,
+    groupBy = "anno1_inf",
+    useGroups = paste0(ct, '_', c("Control", "nonInf", "adjInf", "inf")),
+    plotSummary = c("bulkTrack","loopTrack", "geneTrack"), 
+    pal = pal_tmp,
+    sizes = c(5, 0.7, 0.8),
+    loops = links
+)
+
+plotPDF(p, 
+    name = "tmp.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 4.5, height = 3.6)
+file.copy(paste0(proj@projectMetadata$outputDirectory, '/', 'Plots/tmp.pdf'), overwrite = T,
+          paste0(out.dir, plot.name, '.pdf'))
+```
+
+
+
+
+
+
+

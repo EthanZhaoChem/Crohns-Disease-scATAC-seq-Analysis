@@ -1,0 +1,327 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10/ukbb/'
+```
+
+0. gwas snps (finemapped snps or nominated snps with leading p) were prepared in final/GCAatac/8susie and 19rasqual/8.1, saved in 19rasqual/8LDoverlap/gwas_cd
+
+count signals/snps
+calculate the sum of pips in protein-coding regions, and non-coding regions
+
+1. structure of analysis:
+    (1). gwas finemapped snps vs cell type peaks
+    (2). caQTL lead snps overlapped/colocalized with GWAS finemapped snps
+
+2, corresponding gene - co-activation with the peak
+3. corresponding motif disruption
+
+
+##################  ################ 0. prepare ##################  ################ 
+
+```{r}
+gwas_finemapped <- read.csv('~/yuzhao1/work/atac_gca2024/19rasqual/8LDoverlap/gwas_cd/cd_finemapping_unifprior_93loci_L10_annotated_ukbb.csv', row.names = 1)
+
+xx <- gwas_finemapped$name_chr_pos_hg38
+df_gwas <- data.frame(chr = xx %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,1) %>% as.character(),
+                      start = xx %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,2) %>% as.numeric(),
+                      end = xx %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,3) %>% as.numeric())
+gr_gwas <- GRanges(seqnames = df_gwas$chr, ranges = IRanges(start = df_gwas$start, end = df_gwas$end))
+
+gwas_finemapped$overlapped_cCRE_celltype <- ''
+```
+
+```{r}
+gwas_overlapped_snp_pairs <- read.csv('/project/gca/yuzhao1/work/atac_gca2024/24rasqual2/3qtls_gwas_overlap/gwas_rasqual_caQTL_LD08_ukbbFinemapping.csv', row.names = 1)
+qtls_caPeaks_all_suppTable <- read.csv('/project/gca/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Cell type specific caQTL.csv')
+```
+
+##################  ################ 1. count signals/snps ##################  ################ 
+
+```{r}
+# Number of independent signals per locus
+table(table(gwas_finemapped[!duplicated(gwas_finemapped$signal_ID), 'locus']))
+```
+
+```{r}
+# Number of variants in each signal:
+xx <- table(gwas_finemapped$signal_ID)
+sum(xx == 1)
+sum(xx >= 2  & xx <= 5)
+sum(xx >= 6  & xx <= 10)
+sum(xx >= 11 & xx <= 20)
+sum(xx >= 21 & xx <= 50)
+sum(xx >= 51)
+```
+
+```{r}
+# Posterior probability distribution:
+xx <- as.numeric(gwas_finemapped$susie_pip)
+sum(xx >= 0.95)
+sum(xx >= 0.5  & xx < 0.95)
+sum(xx >= 0.1  & xx < 0.5)
+sum(xx >= 0.01 & xx < 0.1)
+sum(xx <  0.01)
+```
+
+##################  ################ 2. pip proportion in exon/intron/cCRE, annotate nearest Gene to snp ##################  ################ 
+
+```{r}
+gr_to_vec <- function(gr){
+  return(paste0(seqnames(gr), '_', start(gr), '_', end(gr)))
+}
+library(org.Hs.eg.db)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(GenomicRanges)
+source('~/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/helper_gene_annotation.R')
+## pip proportion in exon/intron
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+OrgDb <- org.Hs.eg.db
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+gr_cCRE <- proj@peakSet
+
+# Extracting exon coordinates
+exons <- exonsBy(txdb, by='gene')
+gr_exons <- exons@unlistData
+
+# Extracting intron coordinates
+introns <- intronsByTranscript(txdb)
+gr_introns <- introns@unlistData
+
+# Find overlaps of exon and gwas
+overlaps <- GenomicRanges::findOverlaps(gr_exons, gr_gwas, ignore.strand = T)
+overlapped_gwas_exon <- gwas_finemapped[unique(overlaps@to), ]
+cat(paste0('snps overlapping exons: ', nrow(overlapped_gwas_exon)/nrow(gwas_finemapped)))
+
+# Find overlaps of intron and gwas
+overlaps <- GenomicRanges::findOverlaps(gr_introns, gr_gwas, ignore.strand = T)
+overlapped_gwas_intron <- gwas_finemapped[unique(overlaps@to), ]
+cat(paste0('snps overlapping introns: ', nrow(overlapped_gwas_intron)/nrow(gwas_finemapped)))
+
+# Find overlaps of cCREs and gwas
+gwas_finemapped$overlapped_cCRE <- ''
+overlaps <- GenomicRanges::findOverlaps(gr_cCRE, gr_gwas, ignore.strand = T)
+overlapped_cCREs <- gr_cCRE[overlaps@from] %>% gr_to_vec()
+gwas_finemapped[unique(overlaps@to), 'overlapped_cCRE'] <- overlapped_cCREs
+cat(paste0('snps overlapping cCREs: ', length(overlapped_cCREs)/nrow(gwas_finemapped)))
+```
+
+
+```{r}
+library(bumphunter)
+hg38_genes <- annotateTranscripts(TxDb.Hsapiens.UCSC.hg38.knownGene)
+gwas_nearest_annotation <- matchGenes(
+  gr_gwas,
+  hg38_genes,
+  type = "fiveprime",
+  skipExons = F,
+  promoterDist = 2000,
+  verbose = T
+)
+xx <- gwas_nearest_annotation[, c('name', 'description', 'region', 'distance', 'UTR')]
+colnames(xx) <- c('snp_nearest_gene_name', 'snp_nearest_gene_description', 'snp_nearest_gene_region', 'snp_nearest_gene_distance', 'snp_nearest_gene_UTR')
+gwas_finemapped <- bind_cols(gwas_finemapped, xx)
+
+```
+
+
+##################  ################ 3.1 snps in cell types ##################  ################ 
+
+```{r}
+# cell type peak, FDR 0.1, FC 0.5
+dir_celltype_bed <- '~/yuzhao1/work/atac_gca2024/4peaks/DARs/healthy_union_anno1_peaks/FDR0_1FC0_5/'
+celltypes <- list.files(dir_celltype_bed) %>% gsub('.bed', '', .)
+celltypes <- setdiff(celltypes, "all_celltype_Specific")
+nOverlaps_celltype <- list()
+for (ct in celltypes) {
+  filename <- paste0(dir_celltype_bed, ct, '.bed')
+  tmp <- read.table(filename, sep='\t', header = F)
+  gr_peaks <- GRanges(seqnames = tmp$V1, ranges = IRanges(start = tmp$V2, end = tmp$V3))
+  
+  overlaps <- GenomicRanges::findOverlaps(gr_gwas, gr_peaks, ignore.strand = T)
+  overlapped_gwas <- gwas_finemapped[overlaps@from, ]
+  overlapped_cCRE_celltypes <- tmp[overlaps@to, ]
+  nOverlaps_celltype[[ct]] <- nrow(overlapped_gwas)
+  
+  # extra info
+  gwas_finemapped$overlapped_cCRE_celltype[overlaps@from] <- paste0(gwas_finemapped$overlapped_cCRE_celltype[overlaps@from], '-', ct)
+}
+gwas_finemapped$overlapped_cCRE_celltype <- sub('^-', '', gwas_finemapped$overlapped_cCRE_celltype) # remove prefix -
+nOverlaps_celltype <- unlist(nOverlaps_celltype)
+nOverlaps_celltype <- nOverlaps_celltype[names(gca_colors_atac_union_anno1)]
+nOverlaps_celltype
+```
+
+
+```{r}
+df <- data.frame('celltype' = names(nOverlaps_celltype),
+                 'n_snps' = nOverlaps_celltype)
+rownames(df) <- df$celltype
+df$celltype <- factor(df$celltype, levels = df$celltype)
+```
+
+
+```{r}
+p1 <- ggplot(df, aes(x = celltype, y = n_snps)) +
+  geom_col(fill = '#1f78b4', alpha = 0.9, width = 0.5) +
+  geom_text(aes(label=n_snps), hjust=0.5, vjust = -0.2, color="black",size=2.7, fontface = 'bold')+
+  theme_classic() +
+  theme(
+    panel.grid.major = element_line(linetype="dashed"),
+    panel.grid.minor = element_line(linetype="dashed"),
+    axis.text.x = element_text(angle=45, hjust = 1, vjust = 1, size = 10, face = 'bold', colour = 'black',),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 12, face = 'bold', colour = 'black'),
+    plot.title = element_text(size = 12, face = 'bold', colour = 'black', hjust = 0.5),
+    plot.margin = margin(1,1,1,1,'cm') 
+  )+
+  labs(title = paste0("susie snps, Peaks: FDR<0.1, FC>0.5"), x = "cell type", y = "n snps")
+
+```
+
+
+```{r}
+pdf(paste0(out.dir, 'celltype_nSNPs.pdf'), width = 10, height = 7, pointsize = 1)
+print(p1)
+dev.off()
+```
+
+
+##################  ################ 3.2 snps in ABC  ##################  ################ 
+
+```{r}
+df_abc <- readRDS('~/yuzhao1/work/atac_gca2024/22abc/abc_df_ibd.rds')
+df_abc$peak <- paste0(df_abc$chr, '_', df_abc$start, '_', df_abc$end)
+gwas_finemapped$abc_overlappedPeak <- ''
+for (i in 1:nrow(gwas_finemapped)) {
+  if(i%%10 == 0){
+    cat(i, '\n')
+  }
+  df_abc_sub <- helper_abcMaxLine(name_chr_pos_hg38 = gwas_finemapped[i, 'name_chr_pos_hg38'], df_abc = df_abc)
+  if(length(df_abc_sub > 0)){
+    gwas_finemapped[i, 'abc_overlappedPeak'] <- df_abc_sub[1,'ABC_peak']
+  }
+}
+gwas_finemapped$abc_overlappedPeak_flag <- gwas_finemapped$abc_overlappedPeak!=''
+```
+
+##################  ################ 4.1 multi level prioritization of gwas snps ##################  ################ 
+
+```{r}
+####################################################################
+# update gwas finemapped data
+# capeaks that have lead snps overlapping with gwas
+qtls_caPeaks_all_suppTable$QTL_snp_chrPos <- paste0(qtls_caPeaks_all_suppTable$QTL_chr, '_', 
+                                                    qtls_caPeaks_all_suppTable$QTL_snp_pos, '_', 
+                                                    qtls_caPeaks_all_suppTable$QTL_snp_pos)
+qtls_in_caPeak <- qtls_caPeaks_all_suppTable[qtls_caPeaks_all_suppTable$QTL_snp_in_caPeak=='Yes', 'QTL_snp_chrPos'] %>% unique()
+
+gwas_finemapped$overlapped_withQTL <- F
+gwas_finemapped$overlapped_withQTL_inCApeak <- F
+# overlapped_withQTL
+# overlapped_withQTL_inCApeak
+for (i in 1:nrow(gwas_finemapped)) {
+  gwas_snp <- gwas_finemapped[i, 'name_chr_pos_hg38']
+  overlapped_QTL <- gwas_overlapped_snp_pairs[gwas_overlapped_snp_pairs$gwas_lead == gwas_snp, 'qtls_lead']
+  gwas_finemapped$overlapped_withQTL[[i]] <- length(overlapped_QTL) > 0
+  gwas_finemapped$overlapped_withQTL_inCApeak[[i]] <- sum(overlapped_QTL %in% qtls_in_caPeak) > 0
+}
+```
+
+```{r}
+loci_hla <- read.csv('~/yuzhao1/work/final_GCAatac/8susie/LD_blocks_mapgen/LD_Blocks_HLA.csv')
+gwas_finemapped$Affected_by_HLA <- 'No'
+gwas_finemapped[gwas_finemapped$locus %in% loci_hla$locus_id, 'Affected_by_HLA'] <- 'Yes'
+write.csv(gwas_finemapped, paste0(out.dir, 'gwas_finemapped_processed.csv'))
+```
+
+```{r}
+# draft prioritization
+gwas_finemapped <- read.csv(paste0(out.dir, 'gwas_finemapped_processed.csv'), row.names = 1)
+df_cCREs <- readRDS('~/yuzhao1/work/atac_gca2024/16cCRE/rds/cCREs_enhancer&promoter.rds')
+```
+
+```{r}
+# snps have a pip >= 0.1
+tmp_gwas <- gwas_finemapped[gwas_finemapped$susie_pip >= 0.1 & gwas_finemapped$Affected_by_HLA=='No',]
+
+xx <- sum(tmp_gwas$overlapped_withQTL)
+cat(paste0(xx, ' risk snps: the snp should overlap with a QTL lead snp in LD\n'))
+cat('\n')
+
+xx <- tmp_gwas$overlapped_withQTL_inCApeak
+cat(paste0(sum(xx), ' risk snps: the snp should overlap with a QTL lead snp in LD, this QTL lead snp is inside a caPeak\n'))
+cat(tmp_gwas[xx, 'snp'])
+cat('\n\n')
+
+xx <- sum(tmp_gwas$overlapped_cCRE != '')
+cat(paste0(xx, ' risk snps: the snp should overlap with a cCRE\n'))
+cat(tmp_gwas[tmp_gwas$overlapped_cCRE != '', 'snp'])
+cat('\n\n')
+
+xx <- sum(tmp_gwas$overlapped_cCRE != '' & tmp_gwas$abc_overlappedPeak_flag==T)
+cat(paste0(xx, ' risk snps: the snp should overlap with a cCRE, the cCRE overlap with abc peak \n'))
+cat(tmp_gwas[tmp_gwas$overlapped_cCRE != '' & tmp_gwas$abc_overlappedPeak_flag==T, 'snp'])
+cat('\n\n')
+
+xx <- sum(tmp_gwas$overlapped_cCRE != '' & tmp_gwas$overlapped_cCRE %in% df_cCREs$peak)
+cat(paste0(xx, ' risk snps: the snp should overlap with a cCRE, the cCRE correlated a gene \n'))
+cat(tmp_gwas[tmp_gwas$overlapped_cCRE != '' & tmp_gwas$overlapped_cCRE %in% df_cCREs$peak, 'snp'])
+cat('\n\n')
+
+
+```
+
+
+```{r}
+# snps have a pip > 0
+tmp_gwas <- gwas_finemapped[gwas_finemapped$susie_pip > 0 & gwas_finemapped$Affected_by_HLA=='No',]
+
+xx <- sum(tmp_gwas$overlapped_withQTL)
+cat(paste0(xx, ' risk snps: the snp should overlap with a QTL lead snp in LD\n'))
+cat('\n')
+
+xx <- tmp_gwas$overlapped_withQTL_inCApeak
+cat(paste0(sum(xx), ' risk snps: the snp should overlap with a QTL lead snp in LD, this QTL lead snp is inside a caPeak\n'))
+cat(tmp_gwas[xx, 'snp'])
+cat('\n\n')
+
+xx <- sum(tmp_gwas$overlapped_cCRE != '')
+cat(paste0(xx, ' risk snps: the snp should overlap with a cCRE\n'))
+cat(tmp_gwas[tmp_gwas$overlapped_cCRE != '', 'snp'])
+cat('\n\n')
+
+xx <- sum(tmp_gwas$overlapped_cCRE != '' & tmp_gwas$abc_overlappedPeak_flag==T)
+cat(paste0(xx, ' risk snps: the snp should overlap with a cCRE, the cCRE overlap with abc peak \n'))
+cat(tmp_gwas[tmp_gwas$overlapped_cCRE != '' & tmp_gwas$abc_overlappedPeak_flag==T, 'snp'])
+cat('\n\n')
+
+xx <- sum(tmp_gwas$overlapped_cCRE != '' & tmp_gwas$overlapped_cCRE %in% df_cCREs$peak)
+cat(paste0(xx, ' risk snps: the snp should overlap with a cCRE, the cCRE correlated a gene \n'))
+cat(tmp_gwas[tmp_gwas$overlapped_cCRE != '' & tmp_gwas$overlapped_cCRE %in% df_cCREs$peak, 'snp'])
+cat('\n\n')
+
+
+```
+

@@ -1,0 +1,195 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(data.table)
+library(dplyr)
+library(stringr)
+library(GenomicRanges)
+library(bigsnpr)
+library(mapgen)
+library(susieR)
+library(data.table)
+library(Repitools)
+library(ArchR)
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_colors.R')
+source('~/yuzhao1/scripts/helper_archr.R')
+plot.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_locus/'
+```
+
+```{r}
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+```
+
+
+```{r}
+gwas_finemapped <- read.csv('~/yuzhao1/work/atac_gca2024/19rasqual/8LDoverlap/gwas_cd/cd_finemapping_unifprior_95loci_L10_annotated.csv', row.names = 1)
+gwas_finemapped$pip <- gwas_finemapped$susie_pip
+risk_loci_IDs <- unique(gwas_finemapped$locus)
+df_RiskSNPs <- gwas_finemapped
+df_RiskSNPs$chr <- paste0('chr', df_RiskSNPs$chr)
+```
+
+```{r}
+############ 2. read locus information ############
+# hg19 locus
+locus_all <- readRDS('~/yuzhao1/work/final_GCAatac/8susie/LD_blocks_mapgen/LD_Blocks.rds') %>% as.data.frame(.)
+colnames(locus_all) <- c('chr', 'start', 'end', 'locus_id')
+locus_all$chr <- paste0('chr', locus_all$chr)
+loci_risk <- locus_all[locus_all$locus_id %in% risk_loci_IDs, ]
+
+risk_loci_chr <- loci_risk[, 'chr']
+risk_loci_start <- loci_risk[, 'start']
+risk_loci_end <- loci_risk[, 'end']
+gr_loci <- GRanges(seqnames = risk_loci_chr, ranges = IRanges(start = risk_loci_start, end = risk_loci_end))
+loci_names <- paste0('locus_', loci_risk$locus_id)
+```
+
+```{r}
+############ 3. read peakset bed files ############
+peaksets <- list()
+
+# all peaks
+xx.df <- read.table('~/yuzhao1/work/atac_gca2024/14ldsc/results/union_peakset/bed_lifted/union_peakset.bed')
+colnames(xx.df) <- c('chr', 'start', 'end')
+peaksets[['cCREs']] <- xx.df
+
+# cell type specific peakset  
+beds_dir <- '~/yuzhao1/work/atac_gca2024/14ldsc/results/healthy_union_anno1_peaks_FDR0_1FC0_5/bed_lifted/'
+xx_names <- list.files(beds_dir, full.names = F)
+for (xx in xx_names) {
+  xx.path <- paste0(beds_dir, xx)
+  xx.df <- read.table(xx.path)
+  colnames(xx.df) <- c('chr', 'start', 'end')
+  peaksets[[xx]] <- xx.df
+}
+peakset_names <- names(peaksets)
+
+```
+
+```{r}
+# assign score
+score_celltype_locus <- data.frame(matrix(0, nrow = nrow(loci_risk), ncol = length(peakset_names)))
+rownames(score_celltype_locus) <- loci_names
+colnames(score_celltype_locus) <- peakset_names
+
+
+for (i in 1:nrow(df_RiskSNPs)) {
+  snp_chr <- df_RiskSNPs[i, 'chr']
+  snp_pos <- df_RiskSNPs[i, 'pos']
+  snp_pip <- df_RiskSNPs[i, 'pip']
+  gr_snp <- GRanges(seqnames = snp_chr, ranges = IRanges(start = snp_pos, end = snp_pos))
+  cat(paste0('working on snp: ', i, ' out of ', nrow(df_RiskSNPs), '\n'))
+  
+  overlaps <- findOverlaps(gr_snp, gr_loci)
+  risk_locus_name <-  loci_names[overlaps@to]
+
+  for (k in 1:ncol(score_celltype_locus)) {
+    peaks_set_temp <- peaksets[[k]]
+    gr_peakset <- GRanges(seqnames = peaks_set_temp$chr, ranges = IRanges(start = peaks_set_temp$start, end = peaks_set_temp$end))
+
+    if(any(findOverlaps(gr_snp, gr_peakset)@from)){
+      # update score
+      cat(paste0('updating score: ', i, ' * ', k, '\n'))
+      score_celltype_locus[risk_locus_name, k] <- score_celltype_locus[risk_locus_name, k] + snp_pip
+    }
+  }
+}
+
+saveRDS(score_celltype_locus, '~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_locus/score_celltype_locus.rds')
+score_celltype_locus <- readRDS('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_locus/score_celltype_locus.rds')
+```
+
+
+```{r}
+p <- ggplot(score_celltype_locus, aes(x=cCREs))+
+    geom_histogram(fill="#69b3a2", color="black", alpha=0.9, breaks=seq(0,3.6,0.1)) +
+    theme_pubr() + # Use ggpubr theme
+    geom_vline(xintercept = 0.2, color = "black", lwd=0.5, linetype="dashed") +
+    scale_y_continuous(breaks = seq(5,30,5))+
+    theme(axis.title = element_text(size = 15, face = 'bold'),
+          axis.text.y = element_text(size = 15),
+          axis.text.x = element_text(size = 15),
+          plot.title = element_text(hjust = 0.5),
+          legend.position = "bottom")+
+  labs(title = "", x = "pip sum", y = "# Loci") 
+
+pdf(paste0(plot.dir, 'pip_all_cCREs_with_0.2Line_celltype.pdf'), width = 7, height = 5)
+print(p)
+dev.off()
+```
+
+
+```{r}
+# filter by sum all pips in cCREs without duplicated counting
+df <- score_celltype_locus
+df$all_celltype_Specific.bed <- NULL
+df <- df[df$cCREs > 0.2, ]
+df$cCREs <- NULL
+colnames(df) %<>% gsub('.bed', '', .)
+col_order <- colnames(df)[order(match(colnames(df), names(gca_colors_atac_union_anno1)))]
+df_normalized <- t(df[, col_order])
+```
+
+```{r}
+df_ID_hg19name <- read.table('/project/gca/yuzhao1/work/final_GCAatac/8susie/LD_blocks_mapgen/locus_all_hg19.bed')
+colnames(df_ID_hg19name) <- c('chr', 'start', 'end', 'locus_id')
+df_ID_hg19name$locus_id <- paste0('locus_', df_ID_hg19name$locus_id)
+df_ID_hg19name$locus_plot <- paste0(df_ID_hg19name$chr, ':', df_ID_hg19name$start, '-', df_ID_hg19name$end)
+colnames(df_normalized) <- mapvalues(colnames(df_normalized), df_ID_hg19name$locus_id, df_ID_hg19name$locus_plot, warn_missing = F)
+```
+
+```{r}
+## heatmap plot
+color = c('white', "#B41658FF")
+breaks <- seq(0, 0.2, length.out = length(color))
+col_fun <- circlize::colorRamp2(breaks, color)
+
+
+
+# column_ha <- HeatmapAnnotation(foo = anno_text(colnames(df_normalized), location = 1, rot = 45, 
+#                                                gp = gpar(fontsize = 10, fontface='bold')))
+
+pdf(paste0(plot.dir, 'locus_partition_celltype_cCRE_pip_sum_cutoff_0.2.pdf'), height = 9.5, width = 12)
+ht <- Heatmap(df_normalized, 
+              name = 'pip sum',
+              # bottom_annotation = column_ha,
+              col = col_fun,
+              rect_gp = gpar(col = "black", lwd = 1),
+              # cell_fun = function(j, i, x, y, width, height, fill) {
+              #   grid.text(sprintf("%.2f", df_normalized[i, j]), x, y, gp = gpar(fontsize = 10))
+              # },
+              cluster_columns = T, cluster_rows = F,
+              show_row_dend = F, show_column_dend = F, 
+              show_row_names = T, show_column_names = T,
+              row_names_side = "left",
+              border = T,
+              use_raster = F,
+              show_heatmap_legend = T)
+draw(ht, padding = unit(c(.1, .1, .1, .1), "npc"))
+dev.off()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,23 @@
+#!/bin/bash
+
+#SBATCH --time=36:00:00
+#SBATCH --partition=caslake
+#SBATCH --account=pi-spott
+#SBATCH --tasks=1
+#SBATCH --mem=20Gb
+
+
+module load python
+
+
+dir_cellranger=$1
+output_cell=$2
+sampleID=$3
+
+dir_bcs=/project/gca/yuzhao1/work/atac_gca2024/20bam/1bam_perBC/barcodes
+
+
+
+BAM=$dir_cellranger/$sampleID/outs/possorted_bam.bam
+
+sinto filterbarcodes -b $BAM -c $dir_bcs/$sampleID.txt --barcodetag "CB" --outdir $output_cell

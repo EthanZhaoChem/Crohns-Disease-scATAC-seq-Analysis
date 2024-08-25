@@ -1,0 +1,10 @@
+bcftools query -f '%ID\t%INFO/RAF\t%INFO/INFO\n' ../6.1impute_info/allPatients_info_updatedID.vcf.gz > info_extracted.txt
+
+run R to get a list of filtered snps
+
+bcftools view -i 'ID=@snps_filtered.txt' -Oz -o allPatients_filtered.vcf.gz ../6.1impute_info/allPatients_info_updatedID.vcf.gz
+
+# check whether the filtered records are correct
+bcftools stats allPatients_filtered.vcf.gz > stats_allPatients_filtered
+tabix -p vcf allPatients_filtered.vcf.gz
+

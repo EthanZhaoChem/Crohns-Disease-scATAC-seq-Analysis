@@ -1,0 +1,16 @@
+script series 1:
+1.1prepare_bcList: prepare a table, cell barcode and cell type in each line
+1.2split_barcode: split each sample to sample-celltype bam files
+1.3merge_bam: 
+ - merge sample-celltype bam, to form celltype-patient bam
+ - write bam.list file for each celltype (will be used in 19.1 create allel-specific counts for vcf), 
+   make sure the bam sample order is same with vcf sample order
+
+script series 2:
+2.1prepare_celltypePatients
+ - write the list of patients in each cell type in folder 2.2
+ - prepare bash script of 2.2, subset patients from the vcf file built via glimpse for each cell type , we only selected the filtered patients for each cell type (same with the bamlist prepared in 1.3script)
+ - these vcf files were subsequently filtered for maf>0.05 in 19.1
+2.2submission script
+
+

@@ -1,0 +1,24 @@
+#!/bin/bash
+#SBATCH --output=2.3eagle_log/%x.out
+#SBATCH --error=2.3eagle_log/%x.err
+#SBATCH --time=36:00:00
+#SBATCH --partition=caslake
+#SBATCH --account=pi-spott
+#SBATCH --tasks=1
+#SBATCH --mem=40Gb
+
+sampleID=$1
+chrom=$2 
+output_cell=$3
+ligate_output_cell=$4
+
+gmap=/project/gca/yuzhao1/software/eagle/Eagle_v2.4.1/tables/genetic_map_hg38_withX.txt.gz
+ref=/project/gca/yuzhao1/software/glimpse2/ref_panel/1000GP.chr${chrom}.bcf
+
+outputFile=$output_cell/${sampleID}_chr${chrom}.vcf.gz
+inputFile=$ligate_output_cell/${sampleID}_chr${chrom}_ligated.bcf
+
+
+eagle --geneticMapFile $gmap --vcfRef $ref --vcfTarget $inputFile --outPrefix $output_cell/${sampleID}_chr${chrom}  --vcfOutFormat z 
+bcftools index -f $outputFile 
+

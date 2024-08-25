@@ -1,0 +1,336 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/4fasttopic_pathway/'
+pathways_all <- readRDS('~/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/pathways/all_topics.rds')
+```
+
+```{r}
+topic_id <- 7
+pathways_selected <- c(
+  'HALLMARK_INTERFERON_ALPHA_RESPONSE',
+  'HALLMARK_INTERFERON_GAMMA_RESPONSE',
+  'HALLMARK_KRAS_SIGNALING_UP',
+  'REACTOME_ANTIMICROBIAL_PEPTIDES',
+  'REACTOME_BIOLOGICAL_OXIDATIONS',
+  'REACTOME_TIGHT_JUNCTION_INTERACTIONS',
+  'REACTOME_SLC_TRANSPORTER_DISORDERS',
+  'REACTOME_INTERLEUKIN_20_FAMILY_SIGNALING',
+  'REACTOME_O_LINKED_GLYCOSYLATION_OF_MUCINS',
+  'GOBP_DEFENSE_RESPONSE_TO_BACTERIUM',
+  'GOBP_RESPONSE_TO_XENOBIOTIC_STIMULUS',
+  'GOBP_ACUTE_INFLAMMATORY_RESPONSE',
+  'GOBP_RESPONSE_TO_TUMOR_NECROSIS_FACTOR',
+  'GOBP_VIRAL_LIFE_CYCLE',
+  'GOBP_ICOSANOID_TRANSPORT',
+  'GOBP_CYTOKINE_MEDIATED_SIGNALING_PATHWAY')
+
+pathways_shortName <- c(
+  'Interferon alpha response',
+  'Interferon gamma response',
+  'KRAS signaling up',
+  'Antimicrobial peptides',
+  'Biological oxidations',
+  'Tight junction interactions',
+  'SLC transporter disorders',
+  'Interleukin 20 family signaling',
+  'O linked glycosylation of mucins',
+  'Defense response to bacterium',
+  'Response to xenobiotic stimulus',
+  'Acute inflammatory response',
+  'Response to tumor necrosis factor',
+  'Viral life cycle',
+  'Icosanoid transport',
+  'Cytokine mediated signaling pathway')
+
+df <- pathways_all[[topic_id]][pathways_selected, c('ID', 'NES', 'p.adjust')]
+df$name_short <- pathways_shortName
+df$significance <- cut(df$p.adjust,
+                       breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+                       labels = c("***", "**", "*", " "))
+
+df <- df[order(df$NES, decreasing = F), ]
+df$name_short <- factor(df$name_short, levels = df$name_short)
+p<- ggplot(df, aes(x = NES, y = name_short, fill = p.adjust)) +
+    geom_bar(stat = "identity", width = 0.6, fill = '#fdb462', color = 'black', size = 0.2) +
+    scale_x_continuous(limits = c(0, 2.5))+
+    geom_text(aes(label = significance, x = NES), hjust = -0.2, color = "black") +  # Add significance symbols to the right
+    theme_pubr()+
+    theme(axis.text.y = element_text(size=8),
+    	  axis.text.x = element_text(size=8),
+    	  axis.title = element_text(size=8),
+    	  legend.title = element_blank(),
+    	  legend.text = element_text(size=8),
+    	  legend.position = "bottom",
+    	  plot.margin = margin(1,1,1,1,'cm'),
+    	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+    labs(title = paste0('Topic ', topic_id),
+         x = "Net Enrichment Score",
+         y = "")
+
+pdf(paste0(out.dir, 'Topic ', topic_id, '.pdf'), height = 3.6, width = 6)
+print(p)
+dev.off()
+write.csv(df, paste0(out.dir, 'Topic ', topic_id, '.csv'))
+```
+
+```{r}
+df_list <- list()
+```
+
+```{r}
+topic_id <- 5
+pathways_selected <- c(
+'GOBP_MAINTENANCE_OF_GASTROINTESTINAL_EPITHELIUM',
+'REACTOME_O_LINKED_GLYCOSYLATION',
+'REACTOME_CELL_CELL_JUNCTION_ORGANIZATION')
+
+pathways_shortName <- c(
+'Maintenance of gastrointestinal epithelium',
+'O linked glycosylation',
+'Cell cell junction organization')
+
+df <- pathways_all[[topic_id]][pathways_selected, c('ID', 'NES', 'p.adjust')]
+df$name_short <- pathways_shortName
+df$significance <- cut(df$p.adjust,
+                       breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+                       labels = c("***", "**", "*", " "))
+df <- df[order(df$NES, decreasing = F), ]
+
+df_list[[topic_id %>% as.character()]] <- df
+```
+
+```{r}
+topic_id <- 13
+pathways_selected <- c(
+'GOBP_DEFENSE_RESPONSE',
+'REACTOME_ADAPTIVE_IMMUNE_SYSTEM',
+'GOBP_CELL_KILLING')
+
+pathways_shortName <- c(
+'Defense response',
+'Adaptive immune system',
+'Cell killing')
+
+df <- pathways_all[[topic_id]][pathways_selected, c('ID', 'NES', 'p.adjust')]
+df$name_short <- pathways_shortName
+df$significance <- cut(df$p.adjust,
+                       breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+                       labels = c("***", "**", "*", " "))
+df <- df[order(df$NES, decreasing = F), ]
+
+df_list[[topic_id %>% as.character()]] <- df
+```
+
+```{r}
+topic_id <- 18
+pathways_selected <- c(
+'KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION',
+'KEGG_CHEMOKINE_SIGNALING_PATHWAY',
+'KEGG_CYTOKINE_CYTOKINE_RECEPTOR_INTERACTION')
+
+pathways_shortName <- c(
+'Antigen processing and presentation',
+'Chemokine signaling pathway',
+'Cytokine cytokine receptor interaction')
+
+df <- pathways_all[[topic_id]][pathways_selected, c('ID', 'NES', 'p.adjust')]
+df$name_short <- pathways_shortName
+df$significance <- cut(df$p.adjust,
+                       breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+                       labels = c("***", "**", "*", " "))
+df <- df[order(df$NES, decreasing = F), ]
+
+df_list[[topic_id %>% as.character()]] <- df
+```
+
+```{r}
+topic_id <- 23
+pathways_selected <- c(
+'GOBP_ENTEROENDOCRINE_CELL_DIFFERENTIATION',
+'GOBP_REGULATION_OF_ENDOCRINE_PROCESS',
+'GOBP_REGULATED_EXOCYTOSIS')
+
+pathways_shortName <- c(
+'Enteroendocrine cell differentiation',
+'Regulation of endocrine process',
+'Regulated exocytosis')
+
+df <- pathways_all[[topic_id]][pathways_selected, c('ID', 'NES', 'p.adjust')]
+df$name_short <- pathways_shortName
+df$significance <- cut(df$p.adjust,
+                       breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+                       labels = c("***", "**", "*", " "))
+df <- df[order(df$NES, decreasing = F), ]
+
+df_list[[topic_id %>% as.character()]] <- df
+```
+
+
+```{r}
+topic_id <- 29
+pathways_selected <- c('HALLMARK_FATTY_ACID_METABOLISM',
+                       'REACTOME_METABOLISM_OF_LIPIDS',
+                       'REACTOME_TRANSPORT_OF_SMALL_MOLECULES')
+pathways_shortName <- c('Fatty acid metabolism',
+                        'Metabolism of lipids',
+                        'Transport of small molecules')
+
+df <- pathways_all[[topic_id]][pathways_selected, c('ID', 'NES', 'p.adjust')]
+df$name_short <- pathways_shortName
+df$significance <- cut(df$p.adjust,
+                       breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+                       labels = c("***", "**", "*", " "))
+df <- df[order(df$NES, decreasing = F), ]
+
+df_list[[topic_id %>% as.character()]] <- df
+```
+
+```{r}
+topic_id <- 44
+pathways_selected <- c(
+'GOBP_ADAPTIVE_IMMUNE_RESPONSE',
+'REACTOME_TCR_SIGNALING',
+'GOBP_CYTOKINE_PRODUCTION')
+
+pathways_shortName <- c(
+'Adaptive immune response',
+'TCR signaling',
+'Cytokine production')
+
+df <- pathways_all[[topic_id]][pathways_selected, c('ID', 'NES', 'p.adjust')]
+df$name_short <- pathways_shortName
+df$significance <- cut(df$p.adjust,
+                       breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+                       labels = c("***", "**", "*", " "))
+df <- df[order(df$NES, decreasing = F), ]
+
+df_list[[topic_id %>% as.character()]] <- df
+```
+
+```{r}
+df <- bind_rows(df_list, .id = 'topic_id')
+bar_color_by_topic <- c('#66c2a5','#fc8d62','#8da0cb','#e78ac3','#a6d854','#ffd92f')
+names(bar_color_by_topic) <- c(5, 13, 18, 23, 29, 44) %>% as.character()
+df$name_short <- factor(df$name_short, levels = rev(df$name_short))
+
+p<- ggplot(df, aes(x = NES, y = name_short, fill = topic_id)) +
+    geom_bar(stat = "identity", width = 0.6, color = 'black', size = 0.2) +
+    scale_fill_manual(values = bar_color_by_topic)+
+    scale_x_continuous(limits = c(0, 2.5))+
+    geom_text(aes(label = significance, x = NES), hjust = -0.2, color = "black") +  # Add significance symbols to the right
+    theme_pubr()+
+    theme(axis.text.y = element_text(size=8),
+    	  axis.text.x = element_text(size=8),
+    	  axis.title = element_text(size=8),
+    	  legend.title = element_blank(),
+    	  legend.text = element_text(size=8),
+    	  legend.position = "bottom",
+    	  plot.margin = margin(1,1,1,1,'cm'),
+    	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+    labs(title = paste0(''),
+         x = "Net Enrichment Score",
+         y = "")
+
+pdf(paste0(out.dir, 'multiple_Topics.pdf'), height = 5, width = 5)
+print(p)
+dev.off()
+
+write.csv(df, paste0(out.dir, 'multiple_Topics.csv'))
+```
+
+```{r}
+p1<- ggplot(df[1:9, ], aes(x = NES, y = name_short, fill = topic_id)) +
+    geom_bar(stat = "identity", width = 0.6, color = 'black', size = 0.2) +
+    scale_fill_manual(values = bar_color_by_topic)+
+    scale_x_continuous(limits = c(0, 2.5))+
+    geom_text(aes(label = significance, x = NES), hjust = -0.2, color = "black") +  # Add significance symbols to the right
+    theme_pubr()+
+    theme(axis.text.y = element_text(size=8),
+    	  axis.text.x = element_text(size=8),
+    	  axis.title = element_text(size=8),
+    	  legend.title = element_blank(),
+    	  legend.text = element_text(size=8),
+    	  legend.position = "bottom",
+    	  plot.margin = margin(1,1,1,1,'cm'),
+    	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+    labs(title = paste0(''),
+         x = "Net Enrichment Score",
+         y = "")
+
+p2<- ggplot(df[10:18, ], aes(x = NES, y = name_short, fill = topic_id)) +
+    geom_bar(stat = "identity", width = 0.6, color = 'black', size = 0.2) +
+    scale_fill_manual(values = bar_color_by_topic)+
+    scale_x_continuous(limits = c(0, 2.5))+
+    geom_text(aes(label = significance, x = NES), hjust = -0.2, color = "black") +  # Add significance symbols to the right
+    theme_pubr()+
+    theme(axis.text.y = element_text(size=8),
+    	  axis.text.x = element_text(size=8),
+    	  axis.title = element_text(size=8),
+    	  legend.title = element_blank(),
+    	  legend.text = element_text(size=8),
+    	  legend.position = "bottom",
+    	  plot.margin = margin(1,1,1,1,'cm'),
+    	  plot.title = element_text(size=8, hjust=0.5, face = 'bold'))+
+    labs(title = paste0(''),
+         x = "Net Enrichment Score",
+         y = "")
+
+pdf(paste0(out.dir, 'multiple_Topics_splited.pdf'), height = 3.6, width = 5)
+print(p1)
+print(p2)
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

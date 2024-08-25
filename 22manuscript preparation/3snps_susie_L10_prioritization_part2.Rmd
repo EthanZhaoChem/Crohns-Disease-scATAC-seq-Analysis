@@ -1,0 +1,299 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/ukbb/'
+```
+
+##################  ################ 0. prepare ##################  ################ 
+
+```{r}
+snp_annotation <- read.csv('~/yuzhao1/work/atac_gca2024/24rasqual2/2annotateRSid/snps_rsID_clean.txt')
+snp_annotation$chr_pos <- paste0(snp_annotation$chr, '_', snp_annotation$pos, '_', snp_annotation$pos)
+
+gwas_finemapped <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10/ukbb/gwas_finemapped_processed.csv', row.names = 1)
+rownames(gwas_finemapped) <- gwas_finemapped$snp
+
+df_cCREs <- readRDS('~/yuzhao1/work/atac_gca2024/16cCRE/rds/cCREs_enhancer&promoter.rds')
+gwas_overlapped_snp_pairs <- read.csv('/project/gca/yuzhao1/work/atac_gca2024/24rasqual2/3qtls_gwas_overlap/gwas_rasqual_caQTL_LD08_ukbbFinemapping.csv', 
+                                      row.names = 1)
+
+qtls_caPeaks_all <- read.csv('/project/gca/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Cell type specific caQTL.csv')
+qtls_caPeaks_all$QTL_snp_chrPos <- paste0(qtls_caPeaks_all$QTL_chr, '_', 
+                                          qtls_caPeaks_all$QTL_snp_pos, '_', 
+                                          qtls_caPeaks_all$QTL_snp_pos)
+
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+df_peakset <- data.frame(proj@peakSet)
+rownames(df_peakset) <- paste0(df_peakset$seqnames, '_', df_peakset$start, '_', df_peakset$end)
+
+# prioritized SNPs either overlap a cCRE, a abc peak, or a QTL, but here, calculated for all to make a complete table
+gwas_prioritized_snps <- gwas_finemapped[, 'snp']
+```
+
+
+##################  ################ 1 multi level prioritization of gwas snps ##################  ################ 
+
+```{r}
+# save information of each snp to a list
+# snps_list only save gene name, snps_list saves all information
+gwas_finemapped <- gwas_finemapped[gwas_prioritized_snps,]
+snps_list <- vector("list", length(gwas_prioritized_snps))
+names(snps_list) <- gwas_prioritized_snps
+snps_list_short <- snps_list
+snps_list_full <- snps_list
+
+df_abc <- readRDS('~/yuzhao1/work/atac_gca2024/22abc/abc_df_ibd.rds')
+
+# create 6 new flag names (may duplicate with previous analysis, just for convenience)
+gwas_finemapped$flag_overlapped_cCRE <- F
+gwas_finemapped$flag_overlapped_cCRE_CorGene <- F
+gwas_finemapped$flag_overlapped_QTL <- F
+gwas_finemapped$flag_overlapped_QTL_caPeaks_corGene <- F
+gwas_finemapped$flag_abc_overlappedPeak <- F
+gwas_finemapped$flag_abc_qtl_caPeak_overlappedPeak <- F
+
+for (snp_rsID in gwas_prioritized_snps) {
+  snp_chrPos <- gwas_finemapped[snp_rsID, 'name_chr_pos_hg38']
+
+  # initialize
+  flag_overlapped_cCRE <- 0
+  flag_overlapped_cCRE_CorGene <- 0
+  flag_overlapped_QTL <- 0
+  flag_overlapped_QTL_caPeaks_corGene <- 0
+  flag_abc_overlappedPeak <- gwas_finemapped[snp_rsID, 'abc_overlappedPeak_flag']
+  flag_abc_qtl_caPeak_overlappedPeak <- 0
+  
+  df_peakset_sub <- 'empty'
+  df_cCREs_sub1 <- 'empty'
+  df_overlapped_QTL_with_caPeak <- 'empty'
+  df_cCREs_sub2 <- 'empty'
+  df_abc_sub <- 'empty'
+  df_abc_qtl_sub <- 'empty'
+  
+  nearest_gene1 <- 'empty'
+  nearest_gene2 <- 'empty'
+  cor_gene1 <- 'empty'
+  cor_gene2 <- 'empty'
+  abc_maxGene <- 'empty'
+  abc_qtl_maxGene <- 'empty'
+
+  # overlapped cCRE and nearest gene
+  flag_overlapped_cCRE <- gwas_finemapped[snp_rsID, 'overlapped_cCRE'] != ''
+  if(flag_overlapped_cCRE){
+    snp_overlapped_cCRE <- gwas_finemapped[snp_rsID, 'overlapped_cCRE']
+    df_peakset_sub <- df_peakset[snp_overlapped_cCRE, ]
+    nearest_gene1 <- df_peakset_sub$nearestGene
+  }
+  
+  # overlapped cCRE and correlated gene 
+  flag_overlapped_cCRE_CorGene <- gwas_finemapped[snp_rsID, 'overlapped_cCRE'] %in% df_cCREs$peak
+  if(flag_overlapped_cCRE_CorGene){
+    snp_overlapped_cCRE <- gwas_finemapped[snp_rsID, 'overlapped_cCRE']
+    df_cCREs_sub1 <- df_cCREs[df_cCREs$peak %in% snp_overlapped_cCRE, ]
+    cor_gene1 <- df_cCREs_sub1$linkedGene
+  }
+  
+  # overlappepd ABC and its maxGene
+  if(flag_abc_overlappedPeak){
+    df_abc_sub <- helper_abcMaxLine(name_chr_pos_hg38 = snp_chrPos, df_abc = df_abc)
+    abc_maxGene <- df_abc_sub[,'ABC_TargetGene']
+  }
+
+  # check the overlapped caQTL lead snp, significant cell type
+  flag_overlapped_QTL <- gwas_finemapped[snp_rsID, 'overlapped_withQTL']
+  if(flag_overlapped_QTL){
+    overlapped_QTL <- gwas_overlapped_snp_pairs[gwas_overlapped_snp_pairs$gwas_lead == snp_chrPos, 'qtls_lead']
+    df_overlapped_QTL_with_caPeak <- qtls_caPeaks_all[qtls_caPeaks_all$QTL_snp_chrPos %in% overlapped_QTL, ]
+    df_overlapped_QTL_with_caPeak <- bind_cols(df_overlapped_QTL_with_caPeak, df_peakset[df_overlapped_QTL_with_caPeak$QTL_caPeak,])
+    nearest_gene2 <- df_overlapped_QTL_with_caPeak$nearestGene
+
+    # caPeaks that have a correlated gene
+    caPeaks_cor <- unique(intersect(df_overlapped_QTL_with_caPeak$QTL_caPeak, df_cCREs$peak))
+    flag_overlapped_QTL_caPeaks_corGene <- length(caPeaks_cor) != 0
+    if(flag_overlapped_QTL_caPeaks_corGene){
+      df_cCREs_sub2 <- df_cCREs[df_cCREs$peak %in% caPeaks_cor, ]
+      cor_gene2 <- df_cCREs_sub2$linkedGene
+    }
+    
+    # overlapped QTL, the caPeak is interesecting an ABC peak
+    tmp_qtl_abc <- list()
+    for(k in 1:nrow(df_overlapped_QTL_with_caPeak)){
+      tmp_qtl_name <- df_overlapped_QTL_with_caPeak[k, 'QTL_caPeak']
+      tmp <- helper_abcMaxLine(name_chr_pos_hg38 = tmp_qtl_name, df_abc = df_abc)
+      if(length(tmp) > 0){
+        flag_abc_qtl_caPeak_overlappedPeak <- flag_abc_qtl_caPeak_overlappedPeak + 1
+        tmp_qtl_abc[[flag_abc_qtl_caPeak_overlappedPeak]] <- cbind(tmp, df_overlapped_QTL_with_caPeak[k,])
+      }
+    }
+    flag_abc_qtl_caPeak_overlappedPeak <- ifelse(flag_abc_qtl_caPeak_overlappedPeak>0, T, F)
+    if(flag_abc_qtl_caPeak_overlappedPeak){
+      df_abc_qtl_sub <- bind_rows(tmp_qtl_abc)
+      abc_qtl_maxGene <- df_abc_qtl_sub[,'ABC_TargetGene']
+    }
+  }
+  
+  
+  
+  snps_list_short[[snp_rsID]] <-
+    list(
+      flag_overlapped_cCRE = flag_overlapped_cCRE,
+      flag_overlapped_cCRE_CorGene = flag_overlapped_cCRE_CorGene,
+      flag_overlapped_QTL = flag_overlapped_QTL,
+      flag_overlapped_QTL_caPeaks_corGene = flag_overlapped_QTL_caPeaks_corGene,
+      flag_abc_overlappedPeak = flag_abc_overlappedPeak,
+      flag_abc_qtl_caPeak_overlappedPeak = flag_abc_qtl_caPeak_overlappedPeak,
+      overlapped_cCRE_nearest_gene = nearest_gene1,
+      overlapped_QTL_caPeaks_nearest_gene = nearest_gene2,
+      overlapped_cCRE_cor_gene = cor_gene1,
+      overlapped_QTL_caPeaks_cor_gene = cor_gene2,
+      abc_overlappedPeak_maxGene = abc_maxGene,
+      abc_qtl_caPeak_overlappedPeak_maxGene = abc_qtl_maxGene
+    )
+  
+  snps_list_full[[snp_rsID]] <-
+    list(
+      flag_overlapped_cCRE = flag_overlapped_cCRE,
+      flag_overlapped_cCRE_CorGene = flag_overlapped_cCRE_CorGene,
+      flag_overlapped_QTL = flag_overlapped_QTL,
+      flag_overlapped_QTL_caPeaks_corGene = flag_overlapped_QTL_caPeaks_corGene,
+      flag_abc_overlappedPeak = flag_abc_overlappedPeak,
+      flag_abc_qtl_caPeak_overlappedPeak = flag_abc_qtl_caPeak_overlappedPeak,
+      overlapped_cCRE_peakset = df_peakset_sub,
+      overlapped_cCRE_corGene = df_cCREs_sub1,
+      overlapped_QTL_with_caPeak = df_overlapped_QTL_with_caPeak,
+      overlapped_QTL_caPeak_corGene = df_cCREs_sub2,
+      abc_overlappedPeak_maxGene = df_abc_sub,
+      abc_qtl_caPeak_overlappedPeak_maxGene = df_abc_qtl_sub
+    )
+  gwas_finemapped[snp_rsID, 'flag_overlapped_cCRE'] <- flag_overlapped_cCRE
+  gwas_finemapped[snp_rsID, 'flag_overlapped_cCRE_CorGene'] <- flag_overlapped_cCRE_CorGene
+  gwas_finemapped[snp_rsID, 'flag_overlapped_QTL'] <- flag_overlapped_QTL
+  gwas_finemapped[snp_rsID, 'flag_overlapped_QTL_caPeaks_corGene'] <- flag_overlapped_QTL_caPeaks_corGene
+  gwas_finemapped[snp_rsID, 'flag_abc_overlappedPeak'] <- flag_abc_overlappedPeak
+  gwas_finemapped[snp_rsID, 'flag_abc_qtl_caPeak_overlappedPeak'] <- flag_abc_qtl_caPeak_overlappedPeak
+
+}
+```
+
+
+```{r}
+nearest_gene1 <- lapply(snps_list_short, function(x) x$overlapped_cCRE_nearest_gene)
+nearest_gene1 <- stack(nearest_gene1) %>% dplyr::select(rsID_gwas = ind, gene = values)
+nearest_gene1 <- nearest_gene1[nearest_gene1$gene!='empty', ]
+
+nearest_gene2 <- lapply(snps_list_short, function(x) x$overlapped_QTL_caPeaks_nearest_gene)
+nearest_gene2 <- stack(nearest_gene2) %>% dplyr::select(rsID_gwas = ind, gene = values)
+nearest_gene2 <- nearest_gene2[nearest_gene2$gene!='empty', ]
+
+cor_gene1 <- lapply(snps_list_short, function(x) x$overlapped_cCRE_cor_gene)
+cor_gene1 <- stack(cor_gene1) %>% dplyr::select(rsID_gwas = ind, gene = values)
+cor_gene1 <- cor_gene1[cor_gene1$gene!='empty', ]
+
+cor_gene2 <- lapply(snps_list_short, function(x) x$overlapped_QTL_caPeaks_cor_gene)
+cor_gene2 <- stack(cor_gene2) %>% dplyr::select(rsID_gwas = ind, gene = values)
+cor_gene2 <- cor_gene2[cor_gene2$gene!='empty', ]
+cor_gene2 <- cor_gene2[!duplicated(paste0(cor_gene2$gene, cor_gene2$rsID_gwas)), ]
+
+abc_overlappedPeak_maxGene <- lapply(snps_list_short, function(x) x$abc_overlappedPeak_maxGene)
+abc_overlappedPeak_maxGene <- stack(abc_overlappedPeak_maxGene) %>% dplyr::select(rsID_gwas = ind, gene = values)
+abc_overlappedPeak_maxGene <- abc_overlappedPeak_maxGene[abc_overlappedPeak_maxGene$gene!='empty', ]
+
+abc_qtl_caPeak_overlappedPeak_maxGene <- lapply(snps_list_short, function(x) x$abc_qtl_caPeak_overlappedPeak_maxGene)
+abc_qtl_caPeak_overlappedPeak_maxGene <- stack(abc_qtl_caPeak_overlappedPeak_maxGene) %>% dplyr::select(rsID_gwas = ind, gene = values)
+abc_qtl_caPeak_overlappedPeak_maxGene <- abc_qtl_caPeak_overlappedPeak_maxGene[abc_qtl_caPeak_overlappedPeak_maxGene$gene!='empty', ]
+abc_qtl_caPeak_overlappedPeak_maxGene <- abc_qtl_caPeak_overlappedPeak_maxGene[!duplicated(paste0(abc_qtl_caPeak_overlappedPeak_maxGene$gene, abc_qtl_caPeak_overlappedPeak_maxGene$rsID_gwas)),]
+
+```
+
+```{r}
+results <- list(snps_list_full=snps_list_full,
+                snps_list_short=snps_list_short,
+                overlapped_cCRE_nearest_gene = nearest_gene1,
+                overlapped_cCRE_cor_gene = cor_gene1,
+                overlapped_QTL_caPeak_nearest_gene = nearest_gene2,
+                overlapped_QTL_caPeak_cor_gene = cor_gene2,
+                abc_overlappedPeak_maxGene = abc_overlappedPeak_maxGene,
+                abc_qtl_caPeak_overlappedPeak_maxGene = abc_qtl_caPeak_overlappedPeak_maxGene)
+```
+
+```{r}
+write.csv(gwas_finemapped[gwas_prioritized_snps,],
+          paste0(out.dir, 'gwas_finemapped_annotated.csv'))
+saveRDS(results, paste0(out.dir, 'results.rds'))
+```
+
+##################  ################ 2. add some gene name ##################  ################ 
+
+```{r}
+results <- readRDS(paste0(out.dir, 'results.rds'))
+gwas_finemapped <- read.csv(paste0(out.dir, 'gwas_finemapped_annotated.csv'), row.names = 1)
+```
+
+```{r}
+names_sub_all <- c("overlapped_cCRE_nearest_gene", 
+               "overlapped_cCRE_cor_gene",
+               "overlapped_QTL_caPeak_nearest_gene",
+               "overlapped_QTL_caPeak_cor_gene",
+               "abc_overlappedPeak_maxGene",
+               "abc_qtl_caPeak_overlappedPeak_maxGene")
+gwas_finemapped[, paste0('Genes_', names_sub_all)] <- NA
+for (snp in rownames(gwas_finemapped)) {
+  for (name_sub in names_sub_all) {
+    df <- results[[name_sub]]
+    df <- df[which(df$rsID_gwas == snp),]
+    if(nrow(df) > 0){
+      tmp.genes <- paste(unique(df$gene), collapse = '&')
+      gwas_finemapped[snp, paste0('Genes_', name_sub)] <- tmp.genes
+    }
+  }
+}
+write.csv(gwas_finemapped[gwas_prioritized_snps,],
+          paste0(out.dir, 'gwas_finemapped_annotated2.csv'))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,125 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(ComplexHeatmap)
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/2atac_MarkerPeaks_celltype/'
+```
+
+```{r}
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1_healthy/")
+```
+
+```{r}
+markersPeaks <- readRDS(paste0(proj@projectMetadata$outputDirectory, '/', 'MarkersPeaks_anno1_1vsAll.rds'))
+```
+
+```{r}
+heatmapPeaks <- plotMarkerHeatmap(
+  seMarker = markersPeaks,
+  cutOff = "FDR <= 0.1 & Log2FC >= 0.5",
+  plotLog2FC = F,
+  clusterCols = T,
+  transpose = TRUE,
+  returnMatrix = T,
+  nLabel = 0
+)
+heatmapPeaks <- heatmapPeaks[orders_anno1, ]
+
+```
+
+```{r}
+df <- heatmapPeaks
+transposed_df <- t(df)
+# scaled_df <- scale(transposed_df)
+set.seed(6)  
+num_clusters <- 10000
+kmeans_result <- kmeans(transposed_df, centers = num_clusters)
+cluster_assignments <- kmeans_result$cluster
+```
+
+```{r}
+# Unique clusters
+clusters <- 1:num_clusters
+
+# Initialize a vector to store the row assignment for each cluster
+cluster_row_assignment <- setNames(rep(NA, length(clusters)), clusters)
+
+# Calculate the mean for each cluster in each row and find the row with the highest mean
+for (cluster in clusters) {
+  # Columns belonging to the current cluster
+  cluster_cols <- names(cluster_assignments)[cluster_assignments == cluster]
+  
+  # Calculate the mean for these columns in each row
+  cluster_means <- apply(df[, cluster_cols, drop = FALSE], 1, mean)
+  
+  # Find the row with the maximum mean
+  cluster_row_assignment[[cluster]] <- which.max(cluster_means)
+}
+
+
+# sort clusters by row_assignment
+xx <- names(cluster_row_assignment)[order(cluster_row_assignment, decreasing = F)]
+ordered_columns <- unlist(lapply(xx, function(cluster) {
+  names(cluster_assignments)[cluster_assignments == cluster]
+}))
+sorted_df <- df[, ordered_columns]
+```
+
+
+```{r}
+library(circlize)
+color = paletteContinuous(set = "solarExtra", n = 100)
+breaks <- seq(-2, 2, length.out = length(color))
+color <- circlize::colorRamp2(breaks, color)
+
+
+ht <- Heatmap(as.matrix(sorted_df), 
+              name = 'accessibility',
+              col = color,
+              rect_gp = gpar(col = "black", lwd = 0),
+              cluster_columns = F, cluster_rows = F,
+              show_row_dend = F, show_column_dend = F, 
+              show_row_names = T, show_column_names = F,
+              row_names_side = "left",
+              border = F,
+              show_heatmap_legend = T,
+              use_raster = T, 
+              raster_device = 'png', 
+              raster_quality = 5)
+
+```
+
+```{r}
+pdf(paste0(out.dir, 'healthy_anno1_group_markersPeaks_', num_clusters, '_clusters.pdf'), width = 9, height = 6)
+ComplexHeatmap::draw(ht, padding = unit(c(2, 2, 2, 2), "mm"))
+dev.off()
+
+```
+
+```{r}
+png(paste0(out.dir, 'healthy_anno1_group_markersPeaks_', num_clusters, '_clusters.png'), width = 3000, height = 2000, res = 300)
+ComplexHeatmap::draw(ht, padding = unit(c(2, 2, 2, 2), "mm"))
+dev.off()
+
+```
+
+
+
+

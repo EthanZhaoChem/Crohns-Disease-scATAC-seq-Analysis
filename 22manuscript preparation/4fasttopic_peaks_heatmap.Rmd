@@ -1,0 +1,162 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(fastTopics)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/scripts/deg_dep_utils.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/4fasttopic_daPeaks_heatmap/'
+```
+
+```{r}
+dir_daPeaks_epithelial <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/epithelial_sub100_k20/daPeaks_positive/'
+dir_daPeaks_immune <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/immune_sub100_k20/daPeaks_positive/'
+dir_daPeaks_stromal <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/stromal_sub100_k10/daPeaks_positive/'
+```
+
+```{r}
+dir_binary_epithelial <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/epithelial_sub100_k20/peaks_threshold_0.95/'
+dir_binary_immune <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/immune_sub100_k20/peaks_threshold_0.95/'
+dir_binary_stromal <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/stromal_sub100_k10/peaks_threshold_0.95/'
+```
+
+```{r}
+path_model_epithelial <- '~/yuzhao1/work/atac_gca2024/13fasttopic/rds/fit_epithelial_sub100_k20_1000iterations.rds'
+path_model_immune <- '~/yuzhao1/work/atac_gca2024/13fasttopic/rds/fit_immune_sub100_k20_1000iterations.rds'
+path_model_stromal <- '~/yuzhao1/work/atac_gca2024/13fasttopic/rds/fit_stromal_sub100_k10_300iterations.rds'
+```
+
+```{r}
+beds_dir <- dir_daPeaks_stromal
+model_path <- path_model_immune
+```
+
+```{r}
+topics <- list()
+topic_names <- list.files(beds_dir, full.names = F)
+for (xx in topic_names) {
+  xx.path <- paste0(beds_dir, xx)
+  xx.df <- read.table(xx.path)
+  colnames(xx.df) <- c('chr', 'start', 'end')
+  topics[[xx]] <- xx.df
+}
+names(topics) <- gsub('.bed', '', names(topics))
+```
+
+```{r}
+peaks_alltopics <- list()
+for (i in 1:length(topics)) {
+  topic_name <- names(topics)[[i]]
+  df_topic <- topics[[i]]
+  peaks <- paste0(df_topic$chr, '_', df_topic$start, '_', df_topic$end)
+  peaks_alltopics[[topic_name]] <- peaks
+}
+
+peaks_alltopics <- unique(unlist(peaks_alltopics))
+length(peaks_alltopics)
+```
+
+```{r}
+fit <- readRDS(model_path)
+fit <- poisson2multinom(fit)
+peak_topic_mtx <- fit$F # all peaks in one topic sum to 1
+mtx_topic_daPeak <- t(peak_topic_mtx)[, peaks_alltopics]
+```
+
+```{r}
+# need to scale columns (archr output already scaled, but not this topic result)
+df <- mtx_topic_daPeak
+df <- scale(df)
+```
+
+```{r}
+transposed_df <- t(df)
+# scaled_df <- scale(transposed_df)
+set.seed(6)  
+num_clusters <- 3000
+kmeans_result <- kmeans(transposed_df, centers = num_clusters)
+cluster_assignments <- kmeans_result$cluster
+```
+
+```{r}
+# Unique clusters
+clusters <- 1:num_clusters
+
+# Initialize a vector to store the row assignment for each cluster
+cluster_row_assignment <- setNames(rep(NA, length(clusters)), clusters)
+
+# Calculate the mean for each cluster in each row and find the row with the highest mean
+for (cluster in clusters) {
+  # Columns belonging to the current cluster
+  cluster_cols <- names(cluster_assignments)[cluster_assignments == cluster]
+  
+  # Calculate the mean for these columns in each row
+  cluster_means <- apply(df[, cluster_cols, drop = FALSE], 1, mean)
+  
+  # Find the row with the maximum mean
+  cluster_row_assignment[[cluster]] <- which.max(cluster_means)
+}
+
+
+# sort clusters by row_assignment
+xx <- names(cluster_row_assignment)[order(cluster_row_assignment, decreasing = F)]
+ordered_columns <- unlist(lapply(xx, function(cluster) {
+  names(cluster_assignments)[cluster_assignments == cluster]
+}))
+sorted_df <- df[, ordered_columns]
+```
+
+
+```{r}
+library(circlize)
+color = paletteContinuous(set = "solarExtra", n = 100)
+breaks <- seq(-2, 3, length.out = length(color))
+color <- circlize::colorRamp2(breaks, color)
+
+
+ht <- Heatmap(as.matrix(sorted_df), 
+              name = 'scaled topic score',
+              col = color,
+              rect_gp = gpar(col = "black", lwd = 0),
+              cluster_columns = F, cluster_rows = F,
+              show_row_dend = F, show_column_dend = F, 
+              show_row_names = T, show_column_names = F,
+              row_names_side = "left",
+              border = F,
+              show_heatmap_legend = T,
+              use_raster = T, 
+              raster_device = 'png', 
+              raster_quality = 5)
+
+```
+
+
+```{r}
+png(paste0(out.dir, 'immune_sub100_k20_P95binary_', length(peaks_alltopics), 'peaks.png'), width = 3000, height = 2000, res = 300)
+ComplexHeatmap::draw(ht, padding = unit(c(2, 2, 2, 2), "mm"))
+dev.off()
+```
+
+
+
+
+
+
+
+

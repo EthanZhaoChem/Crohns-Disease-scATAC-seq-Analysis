@@ -1,0 +1,11 @@
+- 3heritability_conditioned.sh
+- conditioned on all open peaks and baseline2.2
+
+# history experience
+checked the ldsc using enhancers only (corr > 0.5 in peak-gene links), but the analysis suffered from too few peaks 
+
+# history problem
+the unlifted folder in each result directory is the trash that can't be lifted from hg38 to hg19,
+the trash files all have unlifted.bed as a suffix
+go find the original folder for hg38 files, or the hg38 folder if there is one
+the lifted folder is hg19

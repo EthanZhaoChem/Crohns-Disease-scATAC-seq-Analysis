@@ -1,0 +1,268 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(GenomicRanges)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('/project/gca/yuzhao1/scripts/helper_archr.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/2atac_peak_summary/'
+```
+
+```{r}
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+```
+
+### 1. peak type by cell type, bar chart
+
+```{r}
+peakDF <- metadata(proj@peakSet)$PeakCallSummary
+pal <- gca_colors_peakType
+lengthMax <- split(peakDF$Freq, peakDF$Group) %>% lapply(sum) %>% unlist %>% max
+colnames(peakDF)[colnames(peakDF)=="Var1"] <- "PeakAnno"
+```
+
+```{r}
+find_partial_match <- function(partial_name, full_names) {
+  
+}
+
+# Initialize a vector to store the sorted names
+sorted_names <- c()
+full_names <- unique(peakDF$Group)
+
+# Iterate over each name in the second group
+for (tmp in names(gca_colors_atac_union_anno1)) {
+  # Find partial matches in the first group
+  matching_names <- full_names[grep(tmp, full_names)]
+  sorted_names <- c(sorted_names, matching_names)
+}
+sorted_names <- unique(c('UnionPeaks', sorted_names))
+```
+
+```{r}
+peakDF$Group <- factor(peakDF$Group, levels = sorted_names)
+p <- ggplot(peakDF, aes(x = Group, y = Freq, fill = PeakAnno)) +
+  geom_bar(stat = "identity") +
+  theme_ArchR(xText90 = TRUE) +
+  ylab("Number of Peaks (x10^3)") +
+  xlab("") +
+  theme(
+    legend.position = "bottom",
+    legend.key = element_rect(size = 2),
+    legend.box.background = element_rect(color = NA)
+  ) +
+  scale_fill_manual(values = pal) +
+  scale_y_continuous(
+    breaks = seq(0, lengthMax * 2, 50),
+    limits = c(0, lengthMax * 1.1),
+    expand = c(0, 0)
+  )
+
+ideal_width <- metadata(proj@peakSet)$PeakCallSummary[['Group']] %>% unique() %>% length() * 0.3+2
+pdf(paste0(out.dir, '00peakSummaryBar', '.pdf'), width = ideal_width, height = 6, pointsize = 1)
+print(p)
+dev.off()
+```
+
+### 2. pie chart and line chart
+```{r}
+# read union peak set
+gr_union <- proj@peakSet
+df_union <- data.frame(gr_union)
+```
+
+```{r}
+# piegram for peaktype
+data <- data.frame(table(df_union$peakType))
+colnames(data) <- c('PeakType', 'Quantity')
+
+# Compute the position of labels
+data <- data %>% 
+  arrange(desc(PeakType)) %>%
+  mutate(prop = Quantity / sum(data$Quantity) *100) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+# Basic piechart
+pdf(paste0(out.dir, '00peakSummaryPie', '.pdf'), width = 6, height = 6, pointsize = 1)
+ggplot(data, aes(x="", y=prop, fill=PeakType)) +
+  geom_bar(stat="identity", width=1, color="black") +
+  coord_polar("y", start=0) +
+  theme_void() + 
+  theme(legend.position="none") +
+  geom_text(aes(y = ypos, label = PeakType), color = "black", size=8) +
+  scale_fill_manual(values = gca_colors_peakType)
+dev.off()
+
+```
+
+
+```{r}
+# read peaks called in each ct
+dir_macsPeaks <- '~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/PeakCalls/anno1/'
+celltypes <- names(gca_colors_atac_union_anno1)
+gr_cts <- list()
+for(ct in celltypes){
+  gr_cts[[ct]] <- readRDS(paste0(dir_macsPeaks, ct, '-reproduciblePeaks.gr.rds'))
+}
+```
+
+```{r}
+# if a peak in union set is overlapping with peaks called in a specific cell type, let's say this peak from union group is "called" in a cell type
+for(ct in celltypes){
+  df_union[, ct] <- 0
+  overlaps <- GenomicRanges::findOverlaps(gr_cts[[ct]], gr_union, ignore.strand = T)
+  df_union[overlaps@to, ct] <- 1
+}
+
+peak_types <- c('Promoter', 'Intronic', 'Exonic', 'Distal')
+for (peak_type in peak_types){
+  
+  # for this peaktype, how many cell types does a peak have
+  df_ct <- df_union[df_union$peakType == peak_type, celltypes] %>% rowSums() %>% table() %>% data.frame()
+  colnames(df_ct) <- c('nCTs', 'nPeaks')
+  df_ct$nPeaks_prop <- df_ct$nPeaks/sum(df_ct$nPeaks)
+  
+  # plot
+  pdf(paste0(out.dir, 'peakType_proportion_', peak_type, '.pdf'), width = 6, height = 3.6, pointsize = 1)
+  p <- ggplot(df_ct, aes(x = 1:29, y = nPeaks_prop)) +
+    geom_line() +
+    geom_point() +
+    theme_pubr() + # Use ggpubr theme
+    theme(
+      axis.title = element_text(size = 12, face = 'bold'),
+      axis.text.y = element_text(size = 10),
+      axis.text.x = element_text(size = 10),
+      plot.title = element_text(hjust = 0.5),
+      legend.position = "bottom"
+    ) +
+    labs(title = paste0(peak_type, ' Peaks'), x = "Number of celltypes", y = "Proportion of peaks")
+  print(p)
+  dev.off()
+}
+
+for (peak_type in peak_types){
+  
+  # for this peaktype, how many cell types does a peak have
+  df_ct <- df_union[df_union$peakType == peak_type, celltypes] %>% rowSums() %>% table() %>% data.frame()
+  colnames(df_ct) <- c('nCTs', 'nPeaks')
+  df_ct$nPeaks_prop <- df_ct$nPeaks/sum(df_ct$nPeaks)
+  
+  # plot
+  pdf(paste0(out.dir, 'peakType_proportion_', peak_type, '_cumulative.pdf'), width = 6, height = 3.6, pointsize = 1)
+  p <- ggplot(df_ct, aes(x = 1:29, y = cumsum(nPeaks_prop))) +
+    geom_line() +
+    geom_point() +
+    theme_pubr() + # Use ggpubr theme
+    theme(
+      axis.title = element_text(size = 12, face = 'bold'),
+      axis.text.y = element_text(size = 10),
+      axis.text.x = element_text(size = 10),
+      plot.title = element_text(hjust = 0.5),
+      legend.position = "bottom"
+    ) +
+    labs(title = paste0(peak_type, ' Peaks'), x = "Number of celltypes", y = "Cumulative proportion of peaks")
+  print(p)
+  dev.off()
+}
+```
+
+```{r}
+# combined plot: multiple lines
+for(ct in celltypes){
+  df_union[, ct] <- 0
+  overlaps <- GenomicRanges::findOverlaps(gr_cts[[ct]], gr_union, ignore.strand = T)
+  df_union[overlaps@to, ct] <- 1
+}
+
+peak_types <- c('Promoter', 'Intronic', 'Exonic', 'Distal')
+df_ct_list <- list()
+for (peak_type in peak_types){
+  
+  # for this peaktype, how many cell types does a peak have
+  df_ct <- df_union[df_union$peakType == peak_type, celltypes] %>% rowSums() %>% table() %>% data.frame()
+  colnames(df_ct) <- c('nCTs', 'nPeaks')
+  df_ct$nPeaks_prop <- df_ct$nPeaks/sum(df_ct$nPeaks)
+  df_ct$nPeaks_prop_cumulative <- cumsum(df_ct$nPeaks_prop)
+  df_ct$peakType <- peak_type 
+  df_ct_list[[peak_type]] <- df_ct
+}
+df <- bind_rows(df_ct_list)
+  
+# plot
+x_labels <- seq(1,29,2)
+pdf(paste0(out.dir, '00peakType_proportion_Combined.pdf'), width = 6, height = 3.6, pointsize = 1)
+p <- ggplot(df, aes(x = nCTs, y = nPeaks_prop,  group = peakType)) +
+  geom_line(aes(color = peakType), size=1) + 
+  geom_point() +
+  theme_pubr() + # Use ggpubr theme
+  scale_x_discrete(limits=factor(x_labels))+
+  scale_color_manual(values = gca_colors_peakType)+
+  theme(
+    axis.title = element_text(size = 12, face = 'bold'),
+    axis.text.y = element_text(size = 10),
+    axis.text.x = element_text(size = 10),
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "bottom"
+  ) +
+  labs(title = paste0('Peaks'), x = "Number of celltypes", y = "Proportion of peaks")
+print(p)
+dev.off()
+
+# plot
+x_labels <- seq(1,29,2)
+pdf(paste0(out.dir, '00peakType_proportion_cumulative_Combined.pdf'), width = 6, height = 3.6, pointsize = 1)
+p <- ggplot(df, aes(x = nCTs, y = nPeaks_prop_cumulative,  group = peakType)) +
+  geom_line(aes(color = peakType), size = 1) + 
+  geom_point() +
+  theme_pubr() + # Use ggpubr theme
+  scale_x_discrete(limits=factor(x_labels))+
+  scale_color_manual(values = gca_colors_peakType)+
+  theme(
+    axis.title = element_text(size = 12, face = 'bold'),
+    axis.text.y = element_text(size = 10),
+    axis.text.x = element_text(size = 10),
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "bottom"
+  ) +
+  labs(title = paste0('Peaks'), x = "Number of celltypes", y = "Cumulative proportion of peaks")
+print(p)
+dev.off()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,60 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(GenomicRanges)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('/project/gca/yuzhao1/scripts/helper_archr.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/2atac_peak_summary/'
+```
+
+```{r}
+# our union peakset
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+gr_union <- proj@peakSet
+df_union <- data.frame(gr_union)
+```
+
+```{r}
+# read peaks called in ref paper
+dir_refPeaks <- '~/yuzhao1/work/atac_gca2024/0manu/plots/2atac_PeakSummary_compareRefHickey/ref_peak/'
+tissues <- c('colon_epithelial', 'duodenum_epithelial', 'ileum_epithelial', 'jejunum_epithelial', 'immune', 'stromal')
+df_refs <- list()
+gr_refs <- list()
+for(ct in tissues){
+  df_refs[[ct]] <- read.table(paste0('~/yuzhao1/work/atac_gca2024/0manu/plots/2atac_PeakSummary_compareRefHickey/ref_peak/', ct, '_peaks.bed'))
+  gr_refs[[ct]] <- GRanges(seqnames = df_refs[[ct]]$V1, ranges = IRanges(start = df_refs[[ct]]$V2, end = df_refs[[ct]]$V3))
+}
+df_refs_all <- bind_rows(df_refs$colon_epithelial, df_refs$immune, df_refs$stromal) # all epithelial are same
+gr_refs_all <- GRanges(seqnames = df_refs_all$V1, ranges = IRanges(start = df_refs_all$V2, end = df_refs_all$V3))
+```
+
+
+```{r}
+# ref three lineages together vs our union
+overlaps <- GenomicRanges::findOverlaps(gr_union, gr_refs_all, ignore.strand = T)
+length(unique(overlaps@from))/length(gr_union)
+length(unique(overlaps@to))/length(gr_refs_all)
+```
+
+
+
+
+
+

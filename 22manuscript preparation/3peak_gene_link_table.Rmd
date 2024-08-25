@@ -1,0 +1,52 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/'
+```
+
+```{r}
+gwas_finemapped <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/gwas_finemapped_annotated2.csv', row.names = 1)
+results <- readRDS('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/results.rds')
+df_cCREs <- readRDS('~/yuzhao1/work/atac_gca2024/16cCRE/rds/cCREs_enhancer&promoter.rds')
+df_abc <- readRDS('~/yuzhao1/work/atac_gca2024/22abc/abc_df_ibd.rds')
+```
+
+## save peak gene correlation table
+
+```{r}
+cor_gene_table <- df_cCREs[, c("peak", "linkedGene", "corr")]
+colnames(cor_gene_table) <- c("peak", "linkedGene", "peak_gene_correlation_score")
+rownames(cor_gene_table) <- NULL
+write.csv(cor_gene_table, '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Peak gene co-activity.csv')
+```
+
+
+
+
+
+
+
+
+
+
+
+

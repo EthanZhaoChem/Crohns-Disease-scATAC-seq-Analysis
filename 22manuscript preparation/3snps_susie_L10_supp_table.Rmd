@@ -1,0 +1,210 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/'
+```
+
+```{r}
+gwas_finemapped <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/1kg/gwas_finemapped_annotated2.csv', row.names = 1)
+gwas_finemapped_ukbb <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/ukbb/gwas_finemapped_annotated2.csv', row.names = 1)
+results <- readRDS('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/1kg/results.rds')
+df_cCREs <- readRDS('~/yuzhao1/work/atac_gca2024/16cCRE/rds/cCREs_enhancer&promoter.rds')
+df_abc <- readRDS('~/yuzhao1/work/atac_gca2024/22abc/abc_df_ibd.rds')
+```
+
+```{r}
+# remove mismatch snps between LD panel and GWAS ss cohort for 1kg results (main results)
+snps_mismatch <- readRDS('~/yuzhao1/work/final_GCAatac/8susie/archive_1kg/results/diagnostic_mismatch_rsID_list.rds') 
+snps_mismatch <- unique(unlist(snps_mismatch))
+intersect(snps_mismatch, gwas_finemapped$snp)
+gwas_finemapped <- gwas_finemapped[!gwas_finemapped$snp %in% snps_mismatch,]
+```
+
+```{r}
+# remove mismatch snps for ukbb results
+snps_mismatch_ukbb <- readRDS('~/yuzhao1/work/final_GCAatac/8susie/results/diagnostic_mismatch_rsID_list.rds') 
+snps_mismatch_ukbb <- unique(unlist(snps_mismatch_ukbb))
+intersect(snps_mismatch, gwas_finemapped_ukbb$snp)
+gwas_finemapped_ukbb <- gwas_finemapped_ukbb[!gwas_finemapped_ukbb$snp %in% snps_mismatch,]
+```
+
+```{r}
+# add labels for UKBB finemap overlap
+gwas_finemapped$finemapped_with_ukbb <- 'No'
+gwas_finemapped[gwas_finemapped$snp %in% gwas_finemapped_ukbb$snp, 'finemapped_with_ukbb'] <- 'Yes'
+```
+
+
+```{r}
+df_ID_hg19name <- read.table('/project/gca/yuzhao1/work/final_GCAatac/8susie/LD_blocks_mapgen/locus_all_hg19.bed')
+colnames(df_ID_hg19name) <- c('chr', 'start', 'end', 'locus_id')
+df_ID_hg19name$locus_plot <- paste0(df_ID_hg19name$chr, ':', df_ID_hg19name$start, '-', df_ID_hg19name$end)
+gwas_finemapped$locus_position_hg19 <- mapvalues(gwas_finemapped$locus, df_ID_hg19name$locus_id, df_ID_hg19name$locus_plot, warn_missing = F)
+```
+
+```{r}
+# add peak's cell type specificity, inflamed dar
+# read inflamed dar for all celltypes
+peaks_inflamed_df <- readRDS('~/yuzhao1/work/atac_gca2024/7dreamlet/differential_test/FDR0_1FC0_5_peak_cellType_table_inf_vs_control.rds')
+
+# add celltype specificity
+gwas_finemapped$overlappedPeak_upRegulated_inflamed_vs_control <- mapvalues(gwas_finemapped$overlapped_cCRE, 
+                                                                                    peaks_inflamed_df$peak,
+                                                                                    peaks_inflamed_df$cellType, 
+                                                                                    warn_missing = F)
+gwas_finemapped$overlappedPeak_upRegulated_inflamed_vs_control[!gwas_finemapped$overlapped_cCRE %in% peaks_inflamed_df$peak] <- ''
+
+```
+
+```{r}
+gwas_finemapped$chromosome <- gwas_finemapped$name_chr_pos_hg38 %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,1)
+gwas_finemapped$position_hg38 <- gwas_finemapped$name_chr_pos_hg38 %>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,2)
+```
+
+```{r}
+# gwas table 1: gwas overlapped peak and related gene
+gwas_prioritized_table <- gwas_finemapped[, c('snp', 'chromosome', 'position_hg38', 'pval', 'susie_pip', 'locus', 'signal_ID', 
+                                              'locus_position_hg19', 'Affected_by_HLA', 
+                                              'snp_nearest_gene_name', 'snp_nearest_gene_distance',
+                                              'snp_nearest_gene_description', 'snp_nearest_gene_UTR',
+                                              'overlapped_cCRE', 'overlapped_cCRE_celltype',
+                                              'overlappedPeak_upRegulated_inflamed_vs_control',
+                                              'abc_overlappedPeak',
+                                              "Genes_overlapped_cCRE_cor_gene",  "Genes_abc_overlappedPeak_maxGene",
+                                              "overlapped_withQTL", "overlapped_withQTL_inCApeak",
+                                              'finemapped_with_ukbb')]
+colnames(gwas_prioritized_table) <- c('GWAS_snp', 'Chromosome', 'Position', 'GWAS_pval', 'finemap_susie_pip', 'locus_ID', 'finemap_credible_set_ID', 
+                                      'locus_position_hg19', 'Affected_by_HLA', 
+                                      'snp_nearest_gene_name', 'snp_nearest_gene_distance',
+                                      'snp_location_relative_to_nearest_gene', 'snp_location_relative_to_nearest_gene_UTR',
+                                      'overlapped_cCRE', 'overlapped_cCRE_differentially_upRegulated_celltype',
+                                      'overlappedPeak_upRegulated_inflamed_vs_control',
+                                      'overlapped_ABCmaxPeak', 
+                                      "overlapped_cCRE_co-active_gene",  "overlapped_abcPeak_ABCmaxGene", 
+                                      "overlapped_withQTL", "overlapped_withQTL_inCApeak",'finemapped_with_ukbb')
+```
+
+```{r}
+# gwas qtl table 2: overlapped QTL and related gene: chunk 1
+df_list <- list()
+for (snp in names(results$snps_list_full)) {
+  df <- results$snps_list_full[[snp]]$overlapped_QTL_with_caPeak
+  if(df != 'empty'){
+    df[['gwas_snp']] <- snp
+    df_list[[snp]] <- df
+  }
+}
+df <- bind_rows(df_list)
+rownames(df) <- NULL
+df <- df[, c('gwas_snp', 'QTL_snp_rsID', 'QTL_caPeak', 'QTL_significant_cellType', "caPeak_differentially_accessible_celltype",
+             "caPeak_upRegulated_inflamed_vs_control", "snp_disrupted_motif", "QTL_snp_in_caPeak")]
+```
+
+```{r}
+# gwas qtl table 2: overlapped QTL and related gene: chunk 2
+df$cor_gene <- ''
+df$abc_max_gene <- ''
+for (i in 1:nrow(df)) {
+  if(i%%100 == 0){
+    cat(i, '\n')
+  }
+  QTL_caPeak <- df$QTL_caPeak[[i]]
+  caPeaks_cor <- unique(intersect(QTL_caPeak, df_cCREs$peak))
+  flag_overlapped_QTL_caPeaks_corGene <- length(caPeaks_cor) != 0
+  
+  # clean cor gene to default
+  cor_gene <- c()
+  if(flag_overlapped_QTL_caPeaks_corGene){
+    xx <- df_cCREs[df_cCREs$peak %in% caPeaks_cor, ]
+    cor_gene <- c(xx$linkedGene)
+  }
+  
+  # clean abc max gene to default
+  ABC_TargetGene <- ''
+  tmp <- helper_abcMaxLine(name_chr_pos_hg38 = QTL_caPeak, df_abc = df_abc)
+  if(length(tmp) > 0){
+    ABC_TargetGene <- tmp[, 'ABC_TargetGene']
+  }
+  
+  df[i, 'cor_gene'] <- paste(unique(cor_gene), collapse = '&')
+  df[i, 'abc_max_gene'] <- ABC_TargetGene
+}
+```
+
+```{r}
+gwas_prioritized_table2 <- df
+colnames(gwas_prioritized_table2) <- c("GWAS_snp", "QTL_snp",  "QTL_caPeak", "QTL_significant_cellType", "caPeak_differentially_upRegulated_celltype",
+                                       "caPeak_upRegulated_inflamed_vs_control", "QTL_snp_disrupted_motif","QTL_snp_in_caPeak", "QTL_caPeak_co-active_gene",
+                                       "QTL_caPeak_overlapped_abcPeak_ABCmaxGene")
+
+gwas_prioritized_table2$finemap_susie_pip <- mapvalues(gwas_prioritized_table2$GWAS_snp, 
+                                                       gwas_prioritized_table$GWAS_snp, 
+                                                       gwas_prioritized_table$finemap_susie_pip, warn_missing = F)
+gwas_prioritized_table2$Affected_by_HLA <- mapvalues(gwas_prioritized_table2$GWAS_snp, 
+                                                       gwas_prioritized_table$GWAS_snp, 
+                                                       gwas_prioritized_table$Affected_by_HLA, warn_missing = F)
+
+```
+
+```{r}
+library(dplyr)
+gwas_prioritized_table2$id <- paste0(gwas_prioritized_table2$GWAS_snp, gwas_prioritized_table2$QTL_snp, gwas_prioritized_table2$QTL_caPeak)
+gwas_prioritized_table2 <- gwas_prioritized_table2 %>%
+  dplyr::group_by(id) %>%
+  dplyr::summarize(QTL_significant_cellType = paste(QTL_significant_cellType, collapse = "&"),
+            across(everything()), .groups = 'drop')
+gwas_prioritized_table2 <- gwas_prioritized_table2[, c("GWAS_snp", "finemap_susie_pip","QTL_snp",  'Affected_by_HLA', "QTL_caPeak", 
+                                                       "QTL_significant_cellType", "caPeak_differentially_upRegulated_celltype", "caPeak_upRegulated_inflamed_vs_control",
+                                                       "QTL_snp_disrupted_motif","QTL_snp_in_caPeak",
+                                                       "QTL_caPeak_co-active_gene", "QTL_caPeak_overlapped_abcPeak_ABCmaxGene")]
+gwas_prioritized_table2 <- unique(gwas_prioritized_table2)
+```
+
+
+```{r}
+# no need to write cor gene as supp table alone, because linked gene is not ct specific
+library(openxlsx)
+xx <- list('All GWAS finemapped SNPs' = gwas_prioritized_table, 'QTL overlapping details' = gwas_prioritized_table2)
+write.xlsx(xx, overwrite = T,
+           file = paste0('~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/',
+                         'Prioritization of GWAS finemapped SNPs.xlsx'))
+```
+
+## additional modification
+```{r}
+# # modify table1 only
+# library(readxl)
+# filename <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Prioritization of GWAS finemapped SNPs.xlsx'
+# sheets <- readxl::excel_sheets(filename)
+# x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X,  col_types = 'guess'))
+# x <- lapply(x, as.data.frame)
+# names(x) <- sheets
+# gwas_prioritized_table2 <- x$`QTL overlapping details`
+```
+
+
+
+
+
+
+
+
+
+
+

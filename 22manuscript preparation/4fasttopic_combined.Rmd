@@ -1,0 +1,321 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(fastTopics)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/scripts/deg_dep_utils.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/4fasttopic_combined/'
+```
+
+##################  ################ ##################  ################
+1. plot topic loadings
+
+```{r}
+path_model_union <- '~/yuzhao1/work/atac_gca2024/13fasttopic/rds/fit_union_sub100_k45_converged.rds'
+```
+
+```{r}
+lineage <- 'union'
+nTopics <- 45
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1_subSampling_max100/")
+model_path <- path_model_union
+metadata1 <- as.data.frame(proj@cellColData)
+```
+
+```{r}
+fit <- readRDS(model_path)
+fit <- poisson2multinom(fit)
+
+# make sure the cell names are in the correct order
+metadata1 <- metadata1[rownames(fit$L),]
+
+# matrix export
+peak_topic_mtx <- fit$F # all peaks in one topic sum to 1
+cell_topic_mtx <- fit$L # all topics in one cell sum to 1
+```
+
+
+```{r}
+plot_suffix <- '_t'
+flag.t <- 1
+
+df <- bind_cols(cell_topic_mtx, metadata1[rownames(cell_topic_mtx),])
+df$anno1 <- factor(df$anno1, levels = names(gca_colors_atac_union_anno1))
+df$inflammation_status<- factor(df$inflammation_status, levels = names(gca_colors_inflammation))
+
+# group the values by anno1
+df_selected <- df[, 1:nTopics]
+df_selected$group <- df$anno1
+
+# Group by the vector and calculate mean for each group
+df_mean <- df_selected %>%
+  group_by(group) %>%
+  summarize_all(mean, na.rm = TRUE) %>%
+  as.data.frame(.)
+rownames(df_mean) <- df_mean$group
+df_mean <- df_mean[, -which(colnames(df_mean) == 'group')]
+```
+
+
+```{r}
+# a sum in a topic is 1
+df <- df_mean
+for (j in 1:ncol(df)) {
+  xx <- df[,j]
+  xx <- xx/sum(xx)
+  xx <- 100*xx
+  df[,j] <- xx
+}
+df_mean <- df
+
+if(flag.t == 1){
+  df_mean <- t(df_mean)
+}
+
+df_mean <- df_mean[mixedsort(rownames(df_mean)),]
+```
+
+##################  ################ ##################  ################
+2. plot annotations for each topic
+
+```{r}
+df_annotation <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/4fasttopic_combined/Topic_annotations - Union_K45.csv', header = T)
+rownames(df_annotation) <- df_annotation$Topic.number
+df_annotation <- df_annotation[, c("Specific", "inflammation", "Region")]
+df_annotation$inflammation <- 'No' 
+df_annotation$inflammation[c(7,9)] <- 'Yes' 
+
+anno1 <- mapvalues(df_annotation[,1], c('Yes', 'No'), c(1, NA)) %>% unlist() %>% as.numeric()
+anno2 <- mapvalues(df_annotation[,2], c('Yes', 'No'), c(17, NA)) %>% unlist() %>% as.numeric()
+anno3 <- mapvalues(df_annotation[,3], c('Yes', 'No'), c(5, NA)) %>% unlist() %>% as.numeric()
+
+colors <- c(`1` = "white", `17` = "white", `5` = "white")
+ha = rowAnnotation(Specific_inflammation_Region = anno_simple(cbind(anno1, anno2, anno3), 
+                                                              col = colors, na_col = "white", 
+                                                              pch = cbind(anno1, anno2, anno3), 
+                                                              gp = gpar(col = "black")))
+```
+
+```{r}
+rownames(df_mean) <- rownames(df_mean) %>% gsub('k', '', .)
+## heatmap plot
+library(circlize)
+library("ggsci")
+library(RColorBrewer)
+color <- brewer.pal(9, 'OrRd')
+
+breaks <- seq(0, 100, length.out = length(color))
+color <- circlize::colorRamp2(breaks, color)
+
+column_ha <- HeatmapAnnotation(foo = anno_text(colnames(df_mean), location = 1, rot = 45, 
+                                               gp = gpar(fontsize = 10, fontface='bold')))
+
+ht1 <- Heatmap(df_mean, right_annotation = ha,
+              # column_split = colnames(df_mean) %>% gsub('_Control', '', .) %>% gsub('_CD', '', .) %>% gsub('_inf', '', .),
+              row_title = 'Topic ID',
+              name = 'normalized per Topic',
+              bottom_annotation = column_ha,
+              col = color,
+              rect_gp = gpar(col = "black", lwd = 0.5),
+              # cell_fun = function(j, i, x, y, width, height, fill) {
+              #   grid.text(sprintf("%.2f", df_mean[i, j]), x, y, gp = gpar(fontsize = 10))
+              # },
+              cluster_columns = F, cluster_rows = F,
+              show_row_dend = F, show_column_dend = F, 
+              show_row_names = T, show_column_names = F,
+              row_names_side = "left",
+              border = T,
+              use_raster = F,
+              show_heatmap_legend = T)
+
+```
+
+
+##################  ################ ##################  ################
+3. plot TF score for each topic
+
+```{r}
+# read excel to list of dataframes: TF_df_list
+library(readxl)    
+filename <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/union_sub100_k45/enriched_motif_from_daPeaks_vsnull_positive_sub100_k_45_top5k.xlsx'
+sheets <- readxl::excel_sheets(filename)
+x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X))
+x <- lapply(x, as.data.frame)
+names(x) <- sheets
+TF_df_list <- x
+rm(x)
+names(TF_df_list) <- strsplit(names(TF_df_list), split = '_', fixed=T) %>% sapply(.,`[[`,1)
+
+# initialize a df
+TFs_names <- TF_df_list$Topic1$feature %>% strsplit(., split = '_', fixed=T) %>% sapply(.,`[[`,1)
+TF_df_all <- as.data.frame(matrix(0, nrow = 870, ncol = 45))
+rownames(TF_df_all) <- TFs_names
+colnames(TF_df_all) <- paste0('Topic', 1:45)
+```
+
+extract m_adjlogp to a df
+```{r}
+# use these mlogP
+TF_cutOff <- 2
+TFs_selected <- c()
+max_n_TFs_perCt <- 30
+max_TF_adjP_cap <- 30
+cts_noTF <- c()
+TF_clusters <- readRDS('~/yuzhao1/work/atac_gca2024/5TF/2TF_clustering/300clusters.rds')
+
+TFs_topGeneScore <- read.csv('~/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/genes/top250_proteinCoding.csv', row.names = 1)
+colnames(TFs_topGeneScore) <- colnames(TFs_topGeneScore) %>% gsub('k', 'Topic', .)
+
+for (i in 1:45){
+  topic_name <- paste0('Topic', i)
+  tmp_enr <- TF_df_list[[topic_name]]
+  tmp_enr$feature <- tmp_enr$feature %>% strsplit(., split = '_', fixed=T) %>% sapply(.,`[[`,1)
+  rownames(tmp_enr) <- tmp_enr$feature 
+  tmp_enr <- tmp_enr[order(tmp_enr$mlog10Padj, decreasing = T), ]
+  
+  xx <- tmp_enr[tmp_enr$mlog10Padj>TF_cutOff, 'feature']
+  
+  # filter by top gene score
+  if(length(xx) < 1){
+    cts_noTF <- c(cts_noTF, topic_name)
+    cat(topic_name, ': no TF passed TF cutoff\n')
+    next
+  }
+  
+  if(length(xx) > max_n_TFs_perCt){
+    xx <- xx[1:max_n_TFs_perCt]
+  }
+  
+  # # decide whether to filter for top gene score
+  # xx <- intersect(TFs_topGeneScore[, topic_name], xx)
+
+  # add all TFs that are clustered together
+  clusters_significant <- unique(TF_clusters[xx])
+  xx <- names(TF_clusters)[TF_clusters %in% clusters_significant]
+
+  TFs_selected <- unique(c(TFs_selected, xx))
+  
+  # add raw data to main df
+  TF_df_all[, topic_name] <- tmp_enr[rownames(TF_df_all), 'mlog10Padj']
+}
+
+
+```
+
+TF filtering by gene score
+```{r}
+# This seems to be filtering too many TFs, will move to gene score
+df_TF_regulator <- readRDS('/project/gca/yuzhao1/work/atac_gca2024/5TF/output/union/regulator_df_anno1_inflammation_status_location_cor0.4_delta0.25.rds')
+TF_positive <- df_TF_regulator[df_TF_regulator$TFRegulator=='Positive', 'cisbp_matchName']
+TFs_selected <- intersect(TF_positive, TFs_selected)
+```
+
+```{r}
+# adjp higher than this cap will be set to cap, and all scores will be scaled for each topic
+df <- t(TF_df_all[TFs_selected, ])
+df <- df[mixedsort(rownames(df)), ]
+df <- df[, mixedsort(colnames(df))]
+
+for (i in 1:nrow(df)) {
+  xx <- df[i,]
+  xx[xx>max_TF_adjP_cap] <- max_TF_adjP_cap 
+  df[i, ] <- xx/max(xx, 0.01) # avoid NA and all zero rows
+}
+df <- df+0.001 # avoid NA and all zero rows
+```
+
+
+```{r}
+transposed_df <- t(df)
+# scaled_df <- scale(transposed_df)
+set.seed(6)  
+num_clusters <- 20
+kmeans_result <- kmeans(transposed_df, centers = num_clusters)
+cluster_assignments <- kmeans_result$cluster
+```
+
+```{r}
+# Unique clusters
+clusters <- 1:num_clusters
+
+# Initialize a vector to store the row assignment for each cluster
+cluster_row_assignment <- setNames(rep(NA, length(clusters)), clusters)
+
+# Calculate the mean for each cluster in each row and find the row with the highest mean
+for (cluster in clusters) {
+  # Columns belonging to the current cluster
+  cluster_cols <- names(cluster_assignments)[cluster_assignments == cluster]
+  
+  # Calculate the mean for these columns in each row
+  cluster_means <- apply(df[, cluster_cols, drop = FALSE], 1, mean)
+  
+  # Find the row with the maximum mean
+  cluster_row_assignment[[cluster]] <- which.max(cluster_means)
+}
+
+
+# sort clusters by row_assignment
+xx <- names(cluster_row_assignment)[order(cluster_row_assignment, decreasing = F)]
+ordered_columns <- unlist(lapply(xx, function(cluster) {
+  names(cluster_assignments)[cluster_assignments == cluster]
+}))
+df <- df[, ordered_columns]
+```
+
+```{r}
+library(circlize)
+color = c('white', '#3690c0')
+breaks <- seq(0, 1, length.out = length(color))
+color <- circlize::colorRamp2(breaks, color)
+
+# df[order(apply(df, 1, which.max)), ]
+ht2 <- Heatmap(df, 
+              name = 'scaled mlog(adjp)',
+              col = color,
+              rect_gp = gpar(col = "black", lwd = 0),
+              cluster_columns = F, cluster_rows = F,
+              show_row_dend = F, show_column_dend = F, 
+              show_row_names = T, show_column_names = T,
+              row_names_side = "left",
+              border = F,
+              show_heatmap_legend = T,
+              use_raster = F)
+
+
+pdf(paste0(out.dir, 'combined_positiveRegulator.pdf'), height = 12, width = 30)
+# pdf(paste0(out.dir, 'combined_positiveRegulator_cor0.5_delta0.5.pdf'), height = 12, width = 21)
+# pdf(paste0(out.dir, 'combined_positiveRegulator_cor0.4_delta0.25.pdf'), height = 12, width = 26)
+draw(ht1 + ht2, padding = unit(c(.1, .1, .1, .1), "npc"))
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

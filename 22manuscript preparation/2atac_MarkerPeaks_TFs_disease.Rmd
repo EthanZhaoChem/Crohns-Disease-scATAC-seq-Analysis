@@ -1,0 +1,130 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('/project/gca/yuzhao1/scripts/helper_archr.R')
+out_DAR <- '/project/gca/yuzhao1/work/atac_gca2024/4peaks/DARs/'
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/2atac_MarkerPeaks_disease/'
+out.dir.tf <- '~/yuzhao1/work/atac_gca2024/0manu/plots/2atac_MarkerTFs_disease/'
+```
+
+```{r}
+proj_union <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+proj_epithelial <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_epithelial2/")
+proj_immune <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_immune2/")
+proj_stromal <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_stromal2/")
+```
+
+# plot pairwise test
+
+```{r}
+celltype <- 'CD_BEST4'
+temp_lineage <- 'epithelial'
+proj <- paste0('proj_', temp_lineage) %>% as.name(.) %>% eval(.)
+proj$condition <- paste0(proj$biopsy_location, '-', proj$disease_status)
+proj$anno_final_condition <- paste0(proj$anno_final, '-', proj$condition)
+
+markersPeaks <- readRDS(paste0(out_DAR, 'MarkersPeaks_', temp_lineage, '_', celltype, '.rds'))
+
+# a readable format (regions for CD)
+df_stat <- archr_helper_markerPeaks_converter(markersPeaks)
+archr_peakset_Loc <- paste0(paste0(as.character(seqnames(proj@peakSet)), ':',
+                                   start(proj@peakSet),'-',end(proj@peakSet)))
+idx_matched <- match(rownames(df_stat), archr_peakset_Loc)
+peaks_info <- as.data.frame(proj@peakSet[idx_matched], row.names = NULL)
+df_stat <- bind_cols(df_stat, peaks_info)
+df_stat_significant <- df_stat[which(df_stat$FDR<0.01 & df_stat$Log2FC > 1), ]
+View(df_stat_significant)
+
+pma <- markerPlot(seMarker = markersPeaks, name = "Ileum BEST4-TI-CD", cutOff = "FDR <= 0.01 & abs(Log2FC) >= 1", plotAs = "MA")
+pv <- markerPlot(seMarker = markersPeaks, name = "Ileum BEST4-TI-CD", cutOff = "FDR <= 0.01 & abs(Log2FC) >= 1", plotAs = "Volcano")
+
+```
+
+```{r}
+plot.name <- paste0(celltype, '.pdf')
+plotPDF(pma, pv, name = plot.name, width = 5, height = 5, ArchRProj = proj, addDOC = FALSE)
+file.copy(from = paste0(proj@projectMetadata$outputDirectory, '/Plots/', plot.name),
+          to = paste0(out.dir, plot.name))
+```
+
+```{r}
+# ti
+motifsUp <- peakAnnoEnrichment(
+    seMarker = markersPeaks,
+    ArchRProj = proj,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.01 & Log2FC >= 1"
+  )
+
+df <- data.frame(TF = rownames(motifsUp), mlog10Padj = assay(motifsUp)[,1])
+df <- df[order(df$mlog10Padj, decreasing = TRUE),]
+df$rank <- seq_len(nrow(df))
+
+ggUp <- ggplot(df, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df[rev(seq_len(30)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 3,
+        nudge_x = 2,
+        color = "black"
+  ) + theme_ArchR() + 
+  ylab("-log10(P-adj) Motif Enrichment") + 
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+# ac
+motifsDo <- peakAnnoEnrichment(
+    seMarker = markersPeaks,
+    ArchRProj = proj,
+    peakAnnotation = "Motif",
+    cutOff = "FDR <= 0.01 & Log2FC <= -1"
+  )
+
+df <- data.frame(TF = rownames(motifsDo), mlog10Padj = assay(motifsDo)[,1])
+df <- df[order(df$mlog10Padj, decreasing = TRUE),]
+df$rank <- seq_len(nrow(df))
+
+ggDo <- ggplot(df, aes(rank, mlog10Padj, color = mlog10Padj)) + 
+  geom_point(size = 1) +
+  ggrepel::geom_label_repel(
+        data = df[rev(seq_len(30)), ], aes(x = rank, y = mlog10Padj, label = TF), 
+        size = 3,
+        nudge_x = 2,
+        color = "black"
+  ) + theme_ArchR() + 
+  ylab("-log10(FDR) Motif Enrichment") +
+  xlab("Rank Sorted TFs Enriched") +
+  scale_color_gradientn(colors = paletteContinuous(set = "comet"))
+
+# plot
+pdf(paste0(out.dir.tf, celltype, '.pdf'), width = 5, height = 5)
+ggUp
+ggDo
+dev.off()
+```
+
+
+
+
+
+
+
+

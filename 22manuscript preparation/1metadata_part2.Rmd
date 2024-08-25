@@ -1,0 +1,87 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/1atac_metadata/'
+```
+
+```{r}
+metadata <- read.csv('~/yuzhao1/work/atac_gca2024/0metadata/meta_Ethan_curated_20240311.csv', row.names = 1)
+metadata_patient <- metadata[!duplicated(metadata$patient_masked),]
+metadata_patient$Age <- as.numeric(metadata_patient$Age)
+```
+
+# 1. provide the supplementary table
+
+```{r}
+supp.table <- metadata[, c('sample', 'patient_masked', 'biopsy_location', 'disease_status', 'inflammation_status', 'Age', 'Race', 'Sex')]
+colnames(supp.table) <- c('Sample', 'Patient', 'Biopsy location', 'Patient disease status', 'Biopsy inflammation status', 'Age', 'Ancestry', 'Sex')
+supp.table <- supp.table[str_order(supp.table$Sample, numeric = TRUE),]
+write.csv(supp.table, '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/sample_metadata.csv')
+```
+
+# 2. plot age
+
+```{r}
+p <- ggboxplot(metadata_patient, x = 'disease_status', y = "Age", outlier.shape = NA, 
+               bxp.errorbar=T, bxp.errorbar.width = 0.2) +
+  geom_jitter(colour = 'black', width = 0.18, size=0.3)+
+  scale_y_continuous(breaks = seq(0, 100, 10), labels = seq(0, 100, 10)) +
+  theme(axis.text.x = element_text(color = "black",  size = 8,),
+        axis.text.y = element_text(color = "black", size = 8),
+        axis.title = element_text(color = "black", size = 8, angle = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),      
+        legend.position = "none",
+        strip.background = element_rect(fill = "white", colour = "white")
+  )+
+  labs(x = "", y = "Patient age", title = "")
+
+pdf(paste0(out.dir, 'Age', '.pdf'), width = 2.6, height = 4, pointsize = 1)
+print(p)
+dev.off()
+```
+
+# 3. get statistics for sex
+
+```{r}
+table(metadata_patient[, c('Sex', 'disease_status')])
+```
+
+# 3. get statistics for ancestry
+
+```{r}
+table(metadata_patient$Race)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

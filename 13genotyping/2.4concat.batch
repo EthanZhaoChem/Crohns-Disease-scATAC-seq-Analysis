@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH --output=2.4concat_log/%x.out
+#SBATCH --error=2.4concat_log/%x.err
+#SBATCH --time=36:00:00
+#SBATCH --partition=caslake
+#SBATCH --account=pi-spott
+#SBATCH --tasks=1
+#SBATCH --mem=40Gb
+
+sampleID=$1
+output_cell=$2
+eagle_output_cell=$3
+
+
+xx=$(ls -1v ${eagle_output_cell}/${sampleID}_*.vcf.gz)
+bcftools concat -Oz -o $output_cell/${sampleID}.vcf.gz  $xx
+tabix -p vcf $output_cell/${sampleID}.vcf.gz
+
+
+

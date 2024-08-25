@@ -1,0 +1,17 @@
+1.1 calculate allel specific counts and add to cell type specific vcf files (here we only need to calculate the cell types filterd in 2.1, saved in 00celltypes_filtered)
+1.2 filter cell type vcf for MAF>0.05 (The AS AN field are correct after subsetting)
+1.3 add index file and write snp list, so 1vcf/output_as is the final folder to use for vcf files (filtered celltypes, filtered patients)
+
+2.1 filter for celltype-patient bulks that passed the threshold (20 cells per bulk, 20 patients per celltype)
+    write the cell types that passed the filter to 00celltypes_filtered, write the corresponding patients to 0patientID_perCelltype folder
+    prepare the peak-patient peak matrix and save to folder 2.1
+2.2 filter peaks: retained only accessible sites with at least 5 reads on average across samples.
+    save filtered peak-patient peak mtx to folder 2.2
+
+## series 3 prepare pca genotype covariates
+3.1 process 1kg file
+3.2 concat 1kg file to a merged one
+
+No. 1~5 are dependent on rasqual alone
+No. 6~10 are dependent on mash, mash was used on caPeaks with lead effect size
+

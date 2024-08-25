@@ -1,0 +1,144 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(harmony)
+library(Seurat)
+library(ArchR)
+library(parallel)
+library(BSgenome.Hsapiens.UCSC.hg38)
+source('~/yuzhao1/scripts/plot.R')
+```
+
+
+```{r, include = F, eval=F}
+addArchRThreads(1)
+temp_lineage <- 'union'
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+out.dir <- '~/yuzhao1/work/atac_gca2024/5TF/output/'
+dir.create(paste0(out.dir, temp_lineage), showWarnings = F)
+```
+
+
+
+```{r}
+proj$anno1_inflammation_status_location <- paste0(proj$anno1, '_', proj$inflammation_status, '_', proj$biopsy_location)
+seGroupMotif <- getGroupSE(ArchRProj = proj, useMatrix = "cisbp", groupBy = "anno1_inflammation_status_location")
+```
+
+```{r}
+seZ <- seGroupMotif[rowData(seGroupMotif)$seqnames=="z",]
+```
+
+```{r}
+rowData(seZ)$maxDelta <- lapply(seq_len(ncol(seZ)), function(x){
+  rowMaxs(assay(seZ) - assay(seZ)[,x])
+}) %>% Reduce("cbind", .) %>% rowMaxs
+```
+
+```{r}
+corGIM_MM <- correlateMatrices(
+    ArchRProj = proj,
+    useMatrix1 = "GeneIntegrationMatrix",
+    useMatrix2 = "cisbp",
+    reducedDims = "IterativeLSI"
+)
+corGIM_MM$maxDelta <- rowData(seZ)[match(corGIM_MM$cisbp_name, rowData(seZ)$name), "maxDelta"]
+```
+
+
+```{r}
+saveRDS(corGIM_MM, paste0(proj@projectMetadata$outputDirectory, '/corGIM_MM_anno1_inflammation_status_location.rds'))
+```
+
+
+
+```{r}
+corGIM_MM <- readRDS(paste0(proj@projectMetadata$outputDirectory, '/corGIM_MM_anno1_inflammation_status_location.rds'))
+```
+
+```{r}
+# positive
+corGIM_MM <- corGIM_MM[order(abs(corGIM_MM$cor), decreasing = TRUE), ]
+corGIM_MM <- corGIM_MM[which(!duplicated(gsub("\\-.*","",corGIM_MM[,"cisbp_name"]))), ]
+corGIM_MM$TFRegulator <- "NO"
+corGIM_MM$TFRegulator[which(corGIM_MM$cor > 0.5 & corGIM_MM$padj < 0.01 & corGIM_MM$maxDelta > quantile(corGIM_MM$maxDelta, 0.5))] <- "Positive"
+corGIM_MM$TFRegulator[which(corGIM_MM$cor < -0.5 & corGIM_MM$padj < 0.01 & corGIM_MM$maxDelta > quantile(corGIM_MM$maxDelta, 0.5))] <- "Negative"
+
+tfs.plot <- sort(corGIM_MM[corGIM_MM$TFRegulator=="Positive",1])
+tfs.plot_negative <- sort(corGIM_MM[corGIM_MM$TFRegulator=="Negative",1])
+tfs.plot 
+
+corGIM_MM$GeneIntegrationMatrix_name_show <- ifelse(corGIM_MM$TFRegulator %in% c("Positive", "Negative"), corGIM_MM$GeneIntegrationMatrix_name, '')
+```
+
+
+```{r}
+colorcode <- c('Negative' = '#4292c6',
+               'Positive' = '#ff7f00')
+cutoff1 <- 0.5
+cutoff2 <- 0.01
+
+df <- data.frame(corGIM_MM)
+p <- ggscatter(df, x='cor', y='maxDelta', color = 'TFRegulator', size = 3) +
+  theme_pubr() +
+  scale_color_manual(values = colorcode)+
+  theme(axis.title = element_text(size = 16, face = 'bold'),
+        axis.text = element_text(size = 10),
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom")+
+  labs(title="TF regulator",
+       x ="Correlation To Gene Expression", y = "Max TF Motif Delta")+
+  geom_text_repel(aes(label=GeneIntegrationMatrix_name_show),
+                  nudge_y = 0, max.overlaps = 1000, min.segment.length = 0.1,
+                  size = 3, force = 15) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = cutoff1, linetype = "dashed") +
+  geom_vline(xintercept = 0-cutoff1, linetype = "dashed") +
+  # geom_hline(yintercept = cutoff2, linetype = "dashed") + 
+  guides(color=guide_legend(title="TF category"))
+
+
+pdf(paste0(out.dir, temp_lineage, '/regulator_anno1_inflammation_status_location.pdf'), width = 8, height = 8, pointsize = 1)
+p
+dev.off()
+
+saveRDS(df, paste0(out.dir, temp_lineage, '/regulator_df_anno1_inflammation_status_location.rds'))
+```
+
+### visualize chromvar z score
+
+```{r}
+motifs <- c("BACH1", "CDX1", "CDX2", "ESRRG", "FOSL2", "GATA6", "HNF4G", "JUND", "NFIA", "NR1H4", "NR5A2", "PPARA") 
+markerMotifs <- getFeatures(proj, select = paste(motifs, collapse="|"), useMatrix = "cisbp")
+markerMotifs <- grep("z:", markerMotifs, value = TRUE)
+markerMotifs
+p_all <- plotGroups(
+  ArchRProj = proj,
+  groupBy = "anno1",
+  colorBy = "cisbp",
+  name = markerMotifs,
+  imputeWeights = getImputeWeights(proj)
+)
+```
+
+```{r}
+for (i in 1:length(p_all)) {
+  pdf(paste0(out.dir, temp_lineage, '/', names(p_all)[[i]], '.pdf'), width = 2, height = 3, pointsize = 1)
+  p2 <- p_all[[i]] + guides(color = FALSE, fill = FALSE) +
+    theme_ArchR(baseSize = 6) +
+    theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")) +
+    theme(axis.ticks.y = element_blank(),
+          axis.title.y = element_blank()) + ylab("")
+  print(p2)
+  dev.off()
+}
+```

@@ -1,0 +1,13 @@
+there are two minor errors occured in first and last bin in chrX during ref split and thus phasing
+
+in split:
+[31mERROR: [0mAC/AN INFO fields in VCF are inconsistent with GT field, update the values in the VCF
+
+thus in phasing:
+[31mERROR: [0mReading binary reference panel file: [/project/gca/yuzhao1/software/glimpse2/ref_panel/split/1000GP.chrX_chrX_151972297_1248956422.bin]. File not good(): eofbit, failbit or badbit set or file not found.
+
+
+i tried correcting vcf via vcflib::vcffixup
+the fixed files still came to this error
+so I believe it is not caused by vcf files, so I archived the fix procedure and used the downloaded vcf files.
+and I disgarded these two minor bins for subsequent analysis

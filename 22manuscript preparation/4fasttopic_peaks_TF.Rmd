@@ -1,0 +1,185 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/scripts/deg_dep_utils.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/4fasttopic_peaks_TF/'
+```
+
+```{r}
+path_daPeaks_epithelial_tf <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/epithelial_sub100_k20/enriched_motif_from_daPeaks_positive_sub100_k_20.xlsx'
+path_daPeaks_immune_tf <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/immune_sub100_k20/enriched_motif_from_daPeaks_positive_sub100_k_20.xlsx'
+path_daPeaks_stromal_tf <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/stromal_sub100_k10/enriched_motif_from_daPeaks_positive_sub100_k_10.xlsx'
+
+path_binary_epithelial_tf <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/epithelial_sub100_k20/enriched_motif_from_binarization_sub100_k_20.xlsx'
+path_binary_immune_tf <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/immune_sub100_k20/enriched_motif_from_binarization_sub100_k_20.xlsx'
+path_binary_stromal_tf <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/stromal_sub100_k10/enriched_motif_from_binarization_sub100_k_10.xlsx'
+```
+
+
+```{r}
+# customize
+filename <- path_daPeaks_epithelial_tf
+path_tf_regolator <- '/project/gca/yuzhao1/work/atac_gca2024/5TF/output/epithelial/regulator_df_anno1_inflammation_status.rds'
+cutoff <- 10
+plot_name <- 'daPeaks_epithelial_k20aa.pdf'
+plot.height <- 7
+```
+
+
+```{r}
+library(readxl)    
+sheets <- readxl::excel_sheets(filename)
+tf_lists <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X))
+tf_lists <- lapply(tf_lists, as.data.frame)
+names(tf_lists) <- sheets
+```
+
+```{r}
+tf_fullnames_order <- tf_lists[[1]]$feature
+df_mlog10Padj <- as.data.frame(matrix(0, nrow = length(tf_fullnames_order), ncol = length(tf_lists)))
+rownames(df_mlog10Padj) <- tf_fullnames_order
+colnames(df_mlog10Padj) <- names(tf_lists)
+
+for (i in 1:length(tf_lists)) {
+  df_name <- names(tf_lists)[[i]]
+  df <- tf_lists[[i]]
+  rownames(df) <- df$feature
+  df_mlog10Padj[tf_fullnames_order, df_name] <- df[tf_fullnames_order, 'mlog10Padj']
+}
+```
+
+```{r}
+df_TF_regulator <- readRDS(path_tf_regolator)
+TF_positive <- df_TF_regulator[df_TF_regulator$TFRegulator=='Positive', 'cisbp_matchName']
+```
+
+```{r}
+# filter for tfs with mlogPadj >= 20, and positive regulastor
+heatmapEM <- t(df_mlog10Padj)
+colnames(heatmapEM) %<>% strsplit(split = '_', fixed=T) %>% sapply(.,`[[`,1)
+heatmapEM <- heatmapEM[, colMaxs(as.matrix(heatmapEM)) >= cutoff]
+heatmapEM <- heatmapEM[, colnames(heatmapEM) %in% TF_positive]
+dim(heatmapEM)
+```
+
+```{r}
+df <- heatmapEM
+for (j in 1:ncol(df)) {
+  xx <- df[,j]
+  xx <- (xx-min(xx))/(max(xx)-min(xx))
+  xx <- 100*xx
+  df[,j] <- xx
+}
+df_mean <- df
+```
+
+```{r}
+transposed_df <- t(df)
+# scaled_df <- scale(transposed_df)
+set.seed(6)  
+num_clusters <- 8
+kmeans_result <- kmeans(transposed_df, centers = num_clusters)
+cluster_assignments <- kmeans_result$cluster
+```
+
+```{r}
+# Unique clusters
+clusters <- 1:num_clusters
+
+# Initialize a vector to store the row assignment for each cluster
+cluster_row_assignment <- setNames(rep(NA, length(clusters)), clusters)
+
+# Calculate the mean for each cluster in each row and find the row with the highest mean
+for (cluster in clusters) {
+  # Columns belonging to the current cluster
+  cluster_cols <- names(cluster_assignments)[cluster_assignments == cluster]
+  
+  # Calculate the mean for these columns in each row
+  cluster_means <- apply(df[, cluster_cols, drop = FALSE], 1, mean)
+  
+  # Find the row with the maximum mean
+  cluster_row_assignment[[cluster]] <- which.max(cluster_means)
+}
+
+
+# sort clusters by row_assignment
+xx <- names(cluster_row_assignment)[order(cluster_row_assignment, decreasing = F)]
+ordered_columns <- unlist(lapply(xx, function(cluster) {
+  names(cluster_assignments)[cluster_assignments == cluster]
+}))
+sorted_df <- df[, ordered_columns]
+```
+
+```{r}
+library(circlize)
+color = paletteContinuous(set = "whitePurple", n = 100)[1:90]
+breaks <- seq(0, 50, length.out = length(color))
+color <- circlize::colorRamp2(breaks, color)
+
+
+ht <- Heatmap(sorted_df, 
+              name = 'scaled mlog(adjp)',
+              col = color,
+              rect_gp = gpar(col = "black", lwd = 0),
+              cluster_columns = F, cluster_rows = F,
+              show_row_dend = F, show_column_dend = F, 
+              show_row_names = T, show_column_names = T,
+              row_names_side = "left",
+              border = F,
+              show_heatmap_legend = T,
+              use_raster = F)
+
+```
+
+
+```{r}
+pdf(paste0(out.dir, plot_name), width = 12, height = plot.height, pointsize = 1)
+ComplexHeatmap::draw(ht, padding = unit(c(2, 2, 2, 2), "mm"))
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

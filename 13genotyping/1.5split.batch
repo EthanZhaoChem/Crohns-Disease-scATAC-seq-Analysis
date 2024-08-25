@@ -1,0 +1,28 @@
+#!/bin/bash
+#SBATCH --output=1.5split_log/%x.out
+#SBATCH --error=1.5split_log/%x.err
+#SBATCH --time=36:00:00
+#SBATCH --partition=caslake
+#SBATCH --account=pi-spott
+#SBATCH --tasks=1
+#SBATCH --mem=10Gb
+
+
+chr=$1
+
+
+cd /project/gca/yuzhao1/software/glimpse2
+
+REF=ref_panel/1000GP.chr${chr}.bcf
+MAP=github/maps/genetic_maps.b38/chr${chr}.b38.gmap.gz
+
+
+while IFS="" read -r LINE || [ -n "$LINE" ];
+do
+printf -v ID "%02d" $(echo $LINE | cut -d" " -f1)
+IRG=$(echo $LINE | cut -d" " -f3)
+ORG=$(echo $LINE | cut -d" " -f4)
+
+GLIMPSE2_split_reference_static --reference ${REF} --map ${MAP} --input-region ${IRG} --output-region ${ORG} --output ref_panel/split/1000GP.chr${chr}
+
+done < chunks/chunks.chr${chr}.txt

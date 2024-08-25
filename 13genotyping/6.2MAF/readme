@@ -1,0 +1,1 @@
+plink --vcf ../6.1impute_info/allPatients_info_updatedID.vcf.gz --freq

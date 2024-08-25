@@ -1,0 +1,193 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(harmony)
+library(Seurat)
+library(ArchR)
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+```
+
+```{r, include = F, eval=F}
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/1atac_proportions/'
+
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+union <- as.data.frame(proj@cellColData)
+union$lineage <- union$category1
+epithelial <- union[union$lineage == 'epithelial',]
+immune <- union[union$lineage == 'immune',]
+stromal <- union[union$lineage == 'stromal',]
+```
+
+
+###################### Composition by location and sample ########################
+
+```{r}
+sample.levels <- mixedsort(unique(union$Sample))
+a <- grep('Control', sample.levels, value = T)
+b <- grep('CD', sample.levels, value = T)
+sample.levels <- c(grep('TI', a, value = T), grep('AC', a, value = T), grep('TI', b, value = T), grep('AC', b, value = T))
+
+theme.composition.loc <-    
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    axis.text.y = element_text(size = 15, face = 'bold', colour = 'black'),
+    axis.text.x = element_text(size = 15, face = 'bold', colour = 'black'),
+    # axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 15, face = 'bold', colour = 'black'),
+    
+    legend.key = element_blank(),
+    legend.title = element_blank(),
+    legend.position = "bottom",
+    legend.text = element_text(size = 5),
+    plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm"),
+    plot.title = element_blank())
+
+theme.composition.sample <-
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    axis.text.y = element_text(size = 15, face = 'bold', colour = 'black'),
+    axis.text.x = element_text(size = 7, face = 'bold', colour = 'black', angle=45, hjust = 1, vjust = 1),
+    # axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 15, face = 'bold', colour = 'black'),
+    
+    legend.key = element_blank(),
+    legend.title = element_blank(),
+    legend.position = "bottom",
+    legend.text = element_text(size = 9),
+    plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm"),
+    plot.title = element_blank())
+```
+
+
+### union-lineage
+
+```{r}
+seurat <- union
+seurat$sample <- seurat$Sample
+
+# per location
+df <- seurat[,c('lineage', 'biopsy_location')]
+df$xx1 <- rep(1, nrow(df))
+df$xx1.sum <- 0
+df2 <- aggregate(xx1~.,df,FUN=sum)
+
+for (temp in unique(df$biopsy_location)){
+  df2[df2$biopsy_location == temp, 'xx1.sum'] <- sum(df[df$biopsy_location == temp, 'xx1'])
+}
+df2$xx2 <- df2$xx1/df2$xx1.sum
+
+df2$biopsy_location <- factor(df2$biopsy_location, levels = c('TI', 'AC'))
+p1 <- ggplot(df2, aes(x = biopsy_location, y = xx2, fill = lineage)) +
+  geom_bar(position = "stack", stat = "identity")+
+  scale_fill_manual(values = gca_colors_atac_lineage)+
+  labs(title = "", y = "Proportion of cells (%)", x = "", fill = "")+
+  theme.composition.loc
+
+pdf(paste0(out.dir, 'union_location.pdf'), width = 4, height = 6, pointsize = 1)
+print(p1)
+dev.off()
+
+
+# per sample
+df <- seurat[,c('lineage', 'sample')]
+df$xx1 <- rep(1, nrow(df))
+df$xx1.sum <- 0
+df2 <- aggregate(xx1~.,df,FUN=sum)
+
+for (temp in unique(df$sample)){
+  df2[df2$sample == temp, 'xx1.sum'] <- sum(df[df$sample == temp, 'xx1'])
+}
+df2$xx2 <- 100*df2$xx1/df2$xx1.sum
+
+df2$sample <- factor(df2$sample, 
+                    levels = sample.levels)
+
+p2 <-ggplot(df2, aes(x = sample, y = xx2, fill = lineage)) +
+  geom_bar(position = "stack", stat = "identity", width = 0.85)+
+  scale_fill_manual(values = gca_colors_atac_lineage)+
+  labs(title = "", y = "Proportion of cells (%)", x = "", fill = "")+
+  theme.composition.sample
+
+pdf(paste0(out.dir, 'union_sample.pdf'), width = 12, height = 6, pointsize = 1)
+print(p2)
+dev.off()
+```
+
+### Per lineage
+
+```{r}
+for (lineage.i in unique(union$lineage)){
+  seurat <- eval(as.name(lineage.i))
+  seurat$sample <- seurat$Sample
+  color.values = eval(as.name(paste0('gca_colors_atac_', lineage.i, '_anno1')))
+  
+  ### plot location.pdf
+  df <- seurat[,c('anno1', 'biopsy_location')]
+  df$xx1 <- rep(1, nrow(df))
+  df$xx1.sum <- 0
+  df2 <- aggregate(xx1~.,df,FUN=sum)
+  
+  for (temp in unique(df$biopsy_location)){
+    df2[df2$biopsy_location == temp, 'xx1.sum'] <- sum(df[df$biopsy_location == temp, 'xx1'])
+  }
+  df2$xx2 <- 100*df2$xx1/df2$xx1.sum
+  df2$biopsy_location <- factor(df2$biopsy_location, levels = c('TI', 'AC'))
+  p1<-ggplot(df2, aes(x = biopsy_location, y = xx2, fill = anno1)) +
+    geom_bar(position = "stack", stat = "identity")+
+    scale_fill_manual(values = color.values)+
+    labs(title = "", y = "Proportion of cells (%)", x = "", fill = "")+
+    theme.composition.loc
+  
+  # plot
+  pdf(paste0(out.dir, lineage.i, '_location.pdf'), width = 5, height = 6, pointsize = 1)
+  print(p1)
+  dev.off()
+  
+  ### plot sample.pdf
+  df <- seurat[,c('anno1', 'sample')]
+  df$xx1 <- rep(1, nrow(df))
+  df$xx1.sum <- 0
+  df2 <- aggregate(xx1~.,df,FUN=sum)
+  for (temp in unique(df$sample)){
+    df2[df2$sample == temp, 'xx1.sum'] <- sum(df[df$sample == temp, 'xx1'])
+  }
+  df2$xx2 <- 100*df2$xx1/df2$xx1.sum
+  
+  df2$sample <- factor(df2$sample, 
+                      levels = sample.levels)
+  p2 <- ggplot(df2, aes(x = sample, y = xx2, fill = anno1)) +
+    geom_bar(position = "stack", stat = "identity", width = 0.85)+
+    scale_fill_manual(values = color.values)+
+    labs(title = "", y = "Proportion of cells (%)", x = "", fill = "")+
+    theme.composition.sample
+  
+  # plot
+  pdf(paste0(out.dir, lineage.i, '_sample.pdf'), width = 15, height = 6, pointsize = 1)
+  print(p2)
+  dev.off()
+}
+
+
+```
+

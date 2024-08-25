@@ -1,0 +1,41 @@
+#!/bin/bash
+ct=$1
+block_index=$2
+
+tmp_dir=log/result
+read lines < $tmp_dir/${ct}_${block_index}.tmpLines.txt
+
+module load python
+module load gsl
+module load gcc/7.4.0
+module load parallel
+
+vcf_dir=/project/gca/yuzhao1/work/atac_gca2024/19rasqual/1vcf/output_as
+rasqual_input_dir=/project/gca/yuzhao1/work/atac_gca2024/19rasqual/4calculation_all_peaks/4ctSpecific_rasqualInput
+rasqual_script=/project/gca/yuzhao1/work/atac_gca2024/19rasqual/4calculation_all_peaks/4.2rasqual_main.sh
+rasqual_output_dir_root=/scratch/midway3/yuzhao1/rasqual/allPeaks_noDiseaseCo/result
+
+output_cell=$rasqual_output_dir_root/$ct
+input_txt=$rasqual_input_dir/$ct.input.txt
+fileY=$rasqual_input_dir/$ct.accessibility.bin
+fileK=$rasqual_input_dir/$ct.size_factors_gc.bin
+fileX=$rasqual_input_dir/$ct.covariates.bin
+vcf_ct=$vcf_dir/$ct.vcf.gz
+
+parallel -j 10 bash $rasqual_script $input_txt {} $fileY $fileK $fileX $vcf_ct $output_cell $ct ::: $lines
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
