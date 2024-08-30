@@ -123,11 +123,10 @@ counts <- GetAssayData(object = gut_raw_filtered, slot = "counts")
 # Output a logical vector for every gene on whether the more than zero counts per cell
 nonzero <- counts > 0
 
-# Sums all TRUE values and returns TRUE if more than 120 TRUE values per gene (average 5/sample)
+# Sums all TRUE values and returns TRUE if more than 240 TRUE values per gene (average 3/sample)
+# Only keeping those genes expressed in more than 3*80=240 cells
 keep_genes <- Matrix::rowSums(nonzero) >= 240
-
 sum(keep_genes)
-# Only keeping those genes expressed in more than 10 cells
 filtered_counts <- counts[keep_genes, ]
 
 # Reassign to filtered Seurat object
