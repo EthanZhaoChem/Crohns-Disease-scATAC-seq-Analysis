@@ -1,1 +1,1 @@
-# Crohns-Disease-scATAC-seq-Analysis
+# Crohn's Disease scATAC seq Analysis

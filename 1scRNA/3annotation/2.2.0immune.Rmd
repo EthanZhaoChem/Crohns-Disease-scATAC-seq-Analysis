@@ -1,0 +1,155 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(harmony)
+library(Seurat)
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+```
+
+```{r, include = F, eval=F}
+# immune <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/immune1.rds')
+# cells.t <- Cells(immune)[immune$seurat_clusters_res0.8 %in% c(23,7,20,0,12,5,21,8,3,15)] 
+# cells.b <- Cells(immune)[immune$seurat_clusters_res0.8 %in% c(1,4,6,16,17,2,9,19)] 
+# cells.myeloid <- Cells(immune)[immune$seurat_clusters_res0.8 %in% c(11,13,14,22,18,10)] 
+# tcell <- subset(immune, cells = cells.t)
+# bcell <- subset(immune, cells = cells.b)
+# myeloid <- subset(immune, cells = cells.myeloid)
+# saveRDS(tcell, '~/yuzhao1/work/final_GCArna/annotation/rds/tcell1.rds')
+# saveRDS(bcell, '~/yuzhao1/work/final_GCArna/annotation/rds/bcell1.rds')
+# saveRDS(myeloid, '~/yuzhao1/work/final_GCArna/annotation/rds/myeloid1.rds')
+# saveRDS(immune, '~/yuzhao1/work/final_GCArna/annotation/rds/immune2.rds')
+```
+
+```{r}
+tcell$lineage <- 'tcell'
+bcell$lineage <- 'bcell'
+myeloid$lineage <- 'myeloid'
+immune <- merge(tcell, y = c(bcell, myeloid), add.cell.ids = NULL, project = "immune")
+```
+
+```{r}
+# decide whether to remove clusters
+columns_to_remove <- grep("seurat_cluster", names(immune@meta.data))
+immune@meta.data <- immune@meta.data[,-columns_to_remove]
+columns_to_remove <- grep("RNA_snn_", names(immune@meta.data))
+immune@meta.data <- immune@meta.data[,-columns_to_remove]
+```
+
+```{r}
+saveRDS(immune, '~/yuzhao1/work/final_GCArna/annotation/rds/immune3.rds')
+write.table(immune@meta.data, '~/yuzhao1/work/final_GCArna/annotation/rds/immune3_metadata.csv', sep = ',')
+```
+
+
+```{r}
+# ref <- readRDS('~/yuzhao1/work/final_RC2rna/annotation/rds/immune3.rds')
+# anchors <- FindTransferAnchors(reference = ref, query = immune, dims = 1:25, reference.reduction = "pca")
+# predictions <- TransferData(anchorset = anchors, refdata = ref$anno1,
+#     dims = 1:25)
+# immune$predicted.anno1 <- mapvalues(Cells(immune), rownames(predictions), predictions$predicted.id)
+```
+
+### workflow
+
+
+```{r, include = F, eval=F}
+immune <- NormalizeData(immune)
+immune <- FindVariableFeatures(immune, selection.method = "vst", nfeatures = 2000)
+immune <- ScaleData(immune, vars.to.regress = c('percent.mt', 'nCount_RNA', 'CC.Difference'))
+immune <- RunPCA(immune, npcs = 50)
+immune <- FindNeighbors(immune, reduction = 'pca', dims = 1:30)
+immune <- RunUMAP(immune,  dims = 1:30, reduction = 'pca', reduction.name = 'pca_umap',
+                  min.dist = 0.3, n.neighbors = 30, seed.use = 5,
+                  reduction.key = 'UMAP_')
+```
+
+```{r}
+ElbowPlot(immune, ndims = 50)
+```
+
+
+```{r}
+xx <- list()
+for(cluster in c(8,5,0)){
+  xx[[cluster]] <- FindMarkers(immune, ident.1 = cluster, min.pct = 0.2, logfc.threshold = 1, group.by = 'seurat_clusters_res0.8')
+  saveRDS(xx[[cluster]], paste0('~/yuzhao1/work/final_GCArna/annotation/markers/immune2_res0.8/cluster_', cluster, '.rds'))
+}
+```
+
+```{r}
+# remove 22
+cluster <- '7'
+View(readRDS(paste0('~/yuzhao1/work/final_GCArna/annotation/markers/immune1_res0.8/cluster_', cluster, '.rds')))
+```
+
+
+
+
+### Check clustering results
+
+```{r, fig.height=8, fig.width=7}
+df <- data.frame(immune@meta.data)
+df$embedding1 <- data.frame(immune@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(immune@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- immune$anno1
+plot_df_umap_custom(df, show.label = 'name')
+```
+
+
+```{r, fig.height=7, fig.width=10}
+df <- data.frame(immune@meta.data)
+df$embedding1 <- data.frame(immune@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(immune@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- immune$anno1
+plot_df_umap_custom(df, show.label = 'name') +
+  facet_wrap(~ biopsy_location) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+```
+
+```{r, fig.height=7, fig.width=10}
+df <- data.frame(immune@meta.data)
+df$embedding1 <- data.frame(immune@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(immune@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- immune$anno1
+plot_df_umap_custom(df, show.label = 'name') +
+  facet_wrap(~ disease_status) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+```
+
+
+#### Check specific markers
+
+```{r}
+for (feature in unlist(gca_rna.tcell.markers)){
+  df <- data.frame(immune@meta.data)
+  df$embedding1 <- data.frame(immune@reductions$pca_umap@cell.embeddings)$UMAP_1
+  df$embedding2 <- data.frame(immune@reductions$pca_umap@cell.embeddings)$UMAP_2
+  df$feature_to_plot <- FetchData(immune, feature) %>% unlist()
+  png(paste0('~/yuzhao1/work/final_GCArna/annotation/plots/immune/singlegene/', feature, '.png'), res = 300, height = 2000, width = 2000)
+  p <-   plot_df_umap_custom(df, plot_feature = T)
+  print(p)
+  dev.off()
+}
+```
+
+
+
+

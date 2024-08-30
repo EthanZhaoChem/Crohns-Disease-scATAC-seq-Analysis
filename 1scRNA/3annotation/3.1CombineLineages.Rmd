@@ -1,0 +1,112 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+knitr::opts_knit$set(root.dir = '/home/yuzhao1/gca/yuzhao1/work/gca_rna/')
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(harmony)
+library(Seurat)
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+epithelial <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/epithelial4.rds')
+immune <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/immune3.rds')
+stromal <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/stromal2.rds')
+```
+
+```{r, eval=F}
+gut_filtered <- merge(epithelial, y = c(immune, stromal), add.cell.ids = NULL, project = "gca")
+```
+
+```{r}
+# decide whether to remove clusters
+columns_to_remove <- grep("seurat_cluster", names(immune@meta.data))
+immune@meta.data <- immune@meta.data[,-columns_to_remove]
+columns_to_remove <- grep("RNA_snn_", names(immune@meta.data))
+immune@meta.data <- immune@meta.data[,-columns_to_remove]
+```
+
+
+```{r, eval=F}
+write.table(gut_filtered@meta.data, '~/yuzhao1/work/final_GCArna/annotation/rds/gca_combined_final_Metadata.csv', sep = ',')
+saveRDS(gut_filtered, '~/yuzhao1/work/final_GCArna/annotation/rds/gca_combined_final.rds')
+```
+
+```{r}
+gut_filtered <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/gca_combined_final.rds')
+```
+
+
+
+### workflow
+
+
+```{r, include = F, eval=F}
+gut_filtered <- NormalizeData(gut_filtered)
+gut_filtered <- FindVariableFeatures(gut_filtered, selection.method = "vst", nfeatures = 2000)
+gut_filtered <- ScaleData(gut_filtered, vars.to.regress = c('percent.mt', 'nCount_RNA', 'CC.Difference'))
+gut_filtered <- RunPCA(gut_filtered, npcs = 50)
+
+gut_filtered <- FindNeighbors(gut_filtered, reduction = 'pca', dims = 1:50)
+
+gut_filtered <- RunUMAP(gut_filtered,  dims = 1:50, reduction = 'pca', reduction.name = 'pca_umap',
+                  min.dist = 0.3, n.neighbors = 30, seed.use = 5,
+                  reduction.key = 'UMAP_')
+
+```
+
+
+### Check clustering results
+
+```{r, fig.height=9, fig.width=8.5}
+df <- data.frame(gut_filtered@meta.data)
+df$embedding1 <- data.frame(gut_filtered@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(gut_filtered@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- gut_filtered$anno2
+p<-plot_df_umap_custom(df, show.label = 'number')
+
+png('~/yuzhao1/work/final_GCArna/annotation/plots/combined/1umap_all.png',res = 300, height = 3000, width = 2600)
+p
+dev.off()
+```
+
+```{r, fig.height=13, fig.width=12}
+df <- data.frame(gut_filtered@meta.data)
+df$embedding1 <- data.frame(gut_filtered@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(gut_filtered@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- gut_filtered$anno2
+p<- plot_df_umap_custom(df, show.label = 'number') +
+  facet_wrap(~ biopsy_location) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+png('~/yuzhao1/work/final_GCArna/annotation/plots/combined/1umap_all_loc.png',res = 300, height = 3000, width = 3600)
+p
+dev.off()
+```
+
+```{r, fig.height=13, fig.width=12}
+df <- data.frame(gut_filtered@meta.data)
+df$embedding1 <- data.frame(gut_filtered@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(gut_filtered@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- gut_filtered$anno2
+p<- plot_df_umap_custom(df, show.label = 'number') +
+  facet_wrap(~ disease_status) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+png('~/yuzhao1/work/final_GCArna/annotation/plots/combined/1umap_all_disease.png',res = 300, height = 3000, width = 3600)
+p
+dev.off()
+```
