@@ -1,0 +1,220 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(harmony)
+library(Seurat)
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+```
+
+```{r, include = F, eval=F}
+myeloid <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/myeloid1.rds')
+```
+
+```{r}
+saveRDS(myeloid, '~/yuzhao1/work/final_GCArna/annotation/rds/myeloid2.rds')
+```
+
+
+```{r}
+# decide whether to remove clusters
+columns_to_remove <- grep("seurat_cluster", names(myeloid@meta.data))
+myeloid@meta.data <- myeloid@meta.data[,-columns_to_remove]
+columns_to_remove <- grep("RNA_snn_", names(myeloid@meta.data))
+myeloid@meta.data <- myeloid@meta.data[,-columns_to_remove]
+```
+
+```{r}
+# filter LQ cells from previous clustering results, and then remove precious labels, from myeloid1 to myeloid2
+# LQ: remove myeloid-epithelial doublets
+xx <- Cells(myeloid)[which(!myeloid$seurat_clusters_res0.5 %in% c(9,10,11,12,13))]
+myeloid_filtered <- subset(myeloid, cells = xx)
+columns_to_remove <- grep("seurat_cluster", names(myeloid_filtered@meta.data))
+myeloid_filtered@meta.data <- myeloid_filtered@meta.data[,-columns_to_remove]
+columns_to_remove <- grep("RNA_snn_", names(myeloid_filtered@meta.data))
+myeloid_filtered@meta.data <- myeloid_filtered@meta.data[,-columns_to_remove]
+```
+
+```{r}
+ref <- readRDS('~/yuzhao1/work/final_RC2rna/annotation/rds/myeloid3.rds')
+anchors <- FindTransferAnchors(reference = ref, query = myeloid, dims = 1:25, reference.reduction = "pca")
+predictions <- TransferData(anchorset = anchors, refdata = ref$anno1,
+    dims = 1:25)
+myeloid$predicted.anno1 <- mapvalues(Cells(myeloid), rownames(predictions), predictions$predicted.id)
+```
+
+```{r}
+df_annotation_res0.5 <- list(
+'0' = 'Macrophage',
+'1' = 'Mast',
+'2' = 'Macrophage',
+'3' = 'Mast',
+'4' = 'Monocyte',
+'5' = 'Neutrophil',
+'6' = 'DC',
+'7' = 'Monocyte',
+'8' = 'Macrophage')
+
+myeloid$anno1 <- unlist(mapvalues(as.character(myeloid$seurat_clusters_res0.5), from = names(df_annotation_res0.5), to = df_annotation_res0.5))
+myeloid$anno2 <- myeloid$anno1
+
+```
+
+
+
+### workflow
+
+
+```{r, include = F, eval=F}
+myeloid <- NormalizeData(myeloid)
+myeloid <- FindVariableFeatures(myeloid, selection.method = "vst", nfeatures = 2000)
+myeloid <- ScaleData(myeloid, vars.to.regress = c('percent.mt', 'nCount_RNA', 'CC.Difference'))
+myeloid <- RunPCA(myeloid, npcs = 50)
+
+myeloid <- FindNeighbors(myeloid, reduction = 'pca', dims = 1:20)
+
+myeloid <- RunUMAP(myeloid,  dims = 1:20, reduction = 'pca', reduction.name = 'pca_umap',
+                  min.dist = 0.3, n.neighbors = 30, seed.use = 5,
+                  reduction.key = 'UMAP_')
+
+myeloid <- FindClusters(myeloid, resolution = 0.2)
+myeloid$seurat_clusters_res0.2 <- Idents(myeloid)
+
+myeloid <- FindClusters(myeloid, resolution = 0.5)
+myeloid$seurat_clusters_res0.5 <- Idents(myeloid)
+
+myeloid <- FindClusters(myeloid, resolution = 0.8)
+myeloid$seurat_clusters_res0.8 <- Idents(myeloid)
+
+myeloid <- FindClusters(myeloid, resolution = 1)
+myeloid$seurat_clusters_res1 <- Idents(myeloid)
+
+
+```
+
+```{r}
+ElbowPlot(myeloid, ndims = 50)
+```
+
+```{r}
+xx <- FindMarkers(myeloid, ident.1 = 13, min.pct = 0.2, logfc.threshold = 1, group.by = 'seurat_clusters_res0.5')
+View(xx)
+```
+
+```{r}
+xx <- list()
+for(cluster in c(8,5,0)){
+  xx[[cluster]] <- FindMarkers(myeloid, ident.1 = cluster, min.pct = 0.2, logfc.threshold = 1, group.by = 'seurat_clusters_res0.8')
+  saveRDS(xx[[cluster]], paste0('~/yuzhao1/work/final_GCArna/annotation/markers/myeloid2_res0.8/cluster_', cluster, '.rds'))
+}
+```
+
+```{r}
+# remove 22
+cluster <- '7'
+View(readRDS(paste0('~/yuzhao1/work/final_GCArna/annotation/markers/myeloid1_res0.8/cluster_', cluster, '.rds')))
+```
+
+
+
+
+### Check clustering results
+
+```{r}
+df <- data.frame(myeloid@meta.data)
+df$embedding1 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- myeloid$anno1
+plot_df_umap_custom(df, show.label = 'name')
+```
+
+```{r}
+ss <- subset(myeloid, cells = Cells(ref)[which(ref$biopsy_location %in% c('AC', 'TI'))])
+ss$anno1_true <- mapvalues(Cells(ss), Cells(ss), ref@meta.data[Cells(ss), 'anno1'])
+```
+
+```{r}
+df <- data.frame(ss@meta.data)
+df$embedding1 <- data.frame(ss@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(ss@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- ss$anno1_true
+plot_df_umap_custom(df, show.label = 'name')
+```
+
+
+```{r, fig.height=8, fig.width=7}
+df <- data.frame(myeloid@meta.data)
+df$embedding1 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- myeloid$predicted.anno1
+plot_df_umap_custom(df, show.label = 'name')
+```
+
+```{r, fig.height=8, fig.width=7}
+df <- data.frame(myeloid@meta.data)
+df$embedding1 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- myeloid$seurat_clusters_res0.5
+plot_df_umap_custom(df, show.label = 'name')
+```
+
+
+#### Check specific markers
+
+```{r}
+genes_to_plot <- c(unlist(gca_rna.myeloid.markers), 'IGHA1', 'CPA3')
+for (feature in genes_to_plot){
+  df <- data.frame(myeloid@meta.data)
+  df$embedding1 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_1
+  df$embedding2 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_2
+  df$feature_to_plot <- FetchData(myeloid, feature) %>% unlist()
+  png(paste0('~/yuzhao1/work/final_GCArna/annotation/plots/myeloid/singlegene/', feature, '.png'), res = 300, height = 2000, width = 2000)
+  p <-   plot_df_umap_custom(df, plot_feature = T)
+  print(p)
+  dev.off()
+}
+```
+
+```{r}
+feature <- 'MS4A7'
+df <- data.frame(myeloid@meta.data)
+df$embedding1 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$feature_to_plot <- FetchData(myeloid, feature) %>% unlist()
+plot_df_umap_custom(df, plot_feature = T)
+```
+
+```{r}
+feature <- 'MKI67'
+df <- data.frame(myeloid@meta.data)
+df$embedding1 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(myeloid@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$feature_to_plot <- FetchData(myeloid, feature) %>% unlist()
+plot_df_umap_custom(df, plot_feature = T)
+```
+
+```{r}
+VlnPlot(object = myeloid, features = 'IGHA1', group.by = 'seurat_clusters_res1.5')
+```
+
+
+
+
+
+
+
+
+
+
+

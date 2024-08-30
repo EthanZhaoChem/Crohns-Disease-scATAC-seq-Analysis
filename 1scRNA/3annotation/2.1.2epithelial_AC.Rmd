@@ -1,0 +1,480 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+knitr::opts_knit$set(root.dir = '/home/yuzhao1/gca/yuzhao1/work/gca_rna/')
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(harmony)
+library(Seurat)
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+```
+
+```{r, include = F, eval=F}
+seurat <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/epithelial4_AC.rds')
+```
+
+```{r}
+columns_to_remove <- grep("seurat_cluster", names(seurat@meta.data))
+seurat@meta.data <- seurat@meta.data[,-columns_to_remove]
+columns_to_remove <- grep("RNA_snn_", names(seurat@meta.data))
+seurat@meta.data <- seurat@meta.data[,-columns_to_remove]
+```
+
+
+```{r, eval=F}
+saveRDS(seurat, '~/yuzhao1/work/final_GCArna/annotation/rds/epithelial4_AC.rds')
+write.table(seurat@meta.data, '~/yuzhao1/work/final_GCArna/annotation/rds/epithelial4_AC_metadata.csv', sep = ',')
+```
+
+
+
+```{r}
+xx <- Cells(seurat)[which(!seurat$seurat_clusters_res0.5 %in% c(17))] 
+seurat_filtered <- subset(seurat, cells = xx)
+
+columns_to_remove <- grep("seurat_cluster", names(seurat_filtered@meta.data))
+seurat_filtered@meta.data <- seurat_filtered@meta.data[,-columns_to_remove]
+columns_to_remove <- grep("RNA_snn_", names(seurat_filtered@meta.data))
+seurat_filtered@meta.data <- seurat_filtered@meta.data[,-columns_to_remove]
+```
+
+
+```{r}
+df_annotation_res1.5 <- list(
+'0' = 'Colon Goblet',
+'1' = 'Early Colonocyte',
+'2' = 'Colon Goblet',
+'3' = 'Tuft',
+'4' = 'Colonocyte',
+'5' = 'Colonocyte',
+'6' = 'Colon Goblet',
+'7' = 'TA',
+'8' = 'Colonocyte',
+'9' = 'Colonocyte',
+'10' = 'Early Colonocyte',
+'11' = 'Colonocyte',
+'12' = 'Early Colonocyte',
+'13' = 'TA',
+'14' = 'Early Colonocyte',
+'15' = 'Stem',
+'16' = 'Early Colonocyte',
+'17' = 'BEST4',
+'18' = 'CD Colonocyte1', # HLA-DRA, CD74, PLA2G2A, DMBT1, KCNIP4
+'19' = 'Colonocyte',
+'20' = 'Colon Goblet',
+'21' = 'Colon Goblet',
+'22' = 'TA',
+'23' = 'CD Colonocyte2', # CCL20, DDIT4, TM4SF1
+'24' = 'TA',
+'25' = 'EEC',
+'26' = 'Colonocyte')
+
+df_annotation_res1.5_anno2 <- list(
+'0' = 'Colon Goblet',
+'1' = 'Early Colonocyte',
+'2' = 'Colon Goblet',
+'3' = 'Colon Tuft',
+'4' = 'Colonocyte',
+'5' = 'Colonocyte',
+'6' = 'Colon Goblet',
+'7' = 'Colon TA',
+'8' = 'Colonocyte',
+'9' = 'Colonocyte',
+'10' = 'Early Colonocyte',
+'11' = 'Colonocyte',
+'12' = 'Early Colonocyte',
+'13' = 'Colon TA',
+'14' = 'Early Colonocyte',
+'15' = 'Colon Stem',
+'16' = 'Early Colonocyte',
+'17' = 'Colon BEST4',
+'18' = 'CD Colonocyte1', # HLA-DRA, CD74, PLA2G2A, DMBT1, KCNIP4
+'19' = 'Colonocyte',
+'20' = 'Colon Goblet',
+'21' = 'Colon Goblet',
+'22' = 'Colon TA',
+'23' = 'CD Colonocyte2', # CCL20, DDIT4, TM4SF1
+'24' = 'Colon TA',
+'25' = 'Colon EEC',
+'26' = 'Colonocyte')
+
+seurat$anno1 <- unlist(mapvalues(as.character(seurat$seurat_clusters_res1.5), from = names(df_annotation_res1.5), to = df_annotation_res1.5))
+seurat$anno2 <- unlist(mapvalues(as.character(seurat$seurat_clusters_res1.5), from = names(df_annotation_res1.5_anno2), to = df_annotation_res1.5_anno2))
+```
+
+
+
+### workflow
+
+
+```{r, include = F, eval=F}
+seurat <- NormalizeData(seurat)
+seurat <- FindVariableFeatures(seurat, selection.method = "vst", nfeatures = 2000)
+seurat <- ScaleData(seurat, vars.to.regress = c('percent.mt', 'nCount_RNA', 'CC.Difference'))
+seurat <- RunPCA(seurat, npcs = 50)
+```
+
+```{r}
+ElbowPlot(seurat)
+```
+
+
+```{r, include = F, eval=F}
+seurat <- FindNeighbors(seurat, reduction = 'pca', dims = 1:15)
+
+seurat <- RunUMAP(seurat,  dims = 1:15, reduction = 'pca', reduction.name = 'pca_umap',
+                  min.dist = 0.3, n.neighbors = 40, seed.use = 5,
+                  reduction.key = 'UMAP_')
+
+seurat <- FindClusters(seurat, resolution = 0.2)
+seurat$seurat_clusters_res0.2 <- Idents(seurat)
+
+seurat <- FindClusters(seurat, resolution = 0.5)
+seurat$seurat_clusters_res0.5 <- Idents(seurat)
+
+seurat <- FindClusters(seurat, resolution = 1)
+seurat$seurat_clusters_res1 <- Idents(seurat)
+
+seurat <- FindClusters(seurat, resolution = 1.5)
+seurat$seurat_clusters_res1.5 <- Idents(seurat)
+```
+
+```{r}
+xx <- FindMarkers(seurat, ident.1 = '10', ident.2 = '0', min.pct = 0.2, logfc.threshold = 0.5, group.by = 'seurat_clusters_res0.5')
+xx2 <- FindMarkers(seurat, ident.1 = '11', ident.2 = '0', min.pct = 0.2, logfc.threshold = 0.5, group.by = 'seurat_clusters_res0.5')
+```
+
+
+```{r}
+xx <- list()
+# do parallel computing
+for(cluster in c(4,5,9)){
+  xx[[cluster]] <- FindMarkers(seurat, ident.1 = cluster, min.pct = 0.1, logfc.threshold = 0.5, group.by = 'seurat_clusters_res1.5')
+  saveRDS(xx[[cluster]], paste0('~/yuzhao1/work/final_GCArna/annotation/markers/epithelial3_AC_res1.5/cluster_', cluster, '.rds'))
+}
+
+
+```
+
+```{r}
+cluster <- '11'
+View(readRDS(paste0('~/yuzhao1/work/final_GCArna/annotation/markers/epithelial3_AC_res1.5/cluster_', cluster, '.rds')))
+```
+
+
+
+
+### Check clustering results
+
+
+```{r, fig.height=9, fig.width=8.5}
+df <- data.frame(seurat@meta.data)
+df$embedding1 <- data.frame(seurat@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(seurat@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- seurat$anno2
+pdf('~/yuzhao1/work/final_GCArna/annotation/plots/epithelial3_AC/umap_anno2.pdf', height = 7, width = 7)
+plot_df_umap_custom(df, show.label = 'name')
+dev.off()
+```
+
+```{r, fig.height=13, fig.width=12}
+df <- data.frame(seurat@meta.data)
+df$embedding1 <- data.frame(seurat@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(seurat@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- seurat$anno2
+p<- plot_df_umap_custom(df, show.label = 'name') +
+  facet_wrap(~ disease_status) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+pdf('~/yuzhao1/work/final_GCArna/annotation/plots/epithelial3_AC/umap_seurat_disease_anno2.pdf', height = 7, width = 10)
+p
+dev.off()
+```
+
+```{r, fig.height=13, fig.width=12}
+df <- data.frame(seurat@meta.data)
+df$embedding1 <- data.frame(seurat@reductions$pca_umap@cell.embeddings)$UMAP_1
+df$embedding2 <- data.frame(seurat@reductions$pca_umap@cell.embeddings)$UMAP_2
+df$cluster_name <- seurat$anno2
+
+png('~/yuzhao1/work/final_GCArna/annotation/plots/epithelial3_AC/umap_seurat_sample.png', height = 8000, width = 8000, res = 300)
+plot_df_umap_custom(df, show.label = 'na') +
+  facet_wrap(~ Sample_ID) +
+  theme(
+    strip.background = element_rect(fill = "white", colour = "white"),
+    strip.text = element_text(size = 12)
+  )
+dev.off()
+```
+
+
+#### Check specific markers
+
+
+
+```{r}
+xx.18 <- FindMarkers(seurat, ident.1 = '18', min.pct = 0.2, logfc.threshold = 0.5, group.by = 'seurat_clusters_res0.5')
+xx.16 <- FindMarkers(seurat, ident.1 = '16', min.pct = 0.2, logfc.threshold = 1, group.by = 'seurat_clusters_res0.5')
+```
+
+```{r}
+View(xx)
+```
+
+
+```{r}
+gene <- 'LGR5'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+
+```{r}
+gene <- 'CEACAM5'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+
+```{r}
+gene <- 'CEACAM6'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+
+```{r}
+gene <- 'CEACAM7'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'OLFM4'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+
+```
+
+
+```{r}
+gene <- 'MKI67'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+
+```
+
+```{r}
+gene <- 'PTPRC'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+
+```
+
+```{r}
+gene <- 'PLA2G2A'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+
+```
+
+
+
+
+
+
+```{r}
+gene <- 'MUC2'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+```
+
+
+
+
+```{r}
+gene <- 'SMOC2'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'BEST4'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'BEST2'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'CEACAM7'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'AQP8'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'BEST4'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'CHGA'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'CA2'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'POU2F3'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'DMBT1'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+
+```{r}
+gene <- 'CEACAM1'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+
+```{r}
+gene <- 'HLA-DRA'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'CCL20'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'KCNIP4'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res0.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'TFF1'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'CD74'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+
+```{r}
+gene <- 'DDIT4'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'TM4SF1'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'CA1'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+
+```{r}
+gene <- 'CA2'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+```{r}
+gene <- 'FABP1'
+FeaturePlot(seurat, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(seurat, gene, group.by = 'seurat_clusters_res1.5', pt.size = 0)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

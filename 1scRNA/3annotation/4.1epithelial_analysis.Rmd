@@ -1,0 +1,43 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+knitr::opts_knit$set(root.dir = '/home/yuzhao1/gca/yuzhao1/work/gca_rna/')
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(harmony)
+library(Seurat)
+source('~/yuzhao1/scripts/plot.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+```
+
+```{r}
+epithelial <- readRDS('~/yuzhao1/work/final_GCArna/annotation/rds/epithelial4.rds')
+```
+
+
+
+
+### Check clustering results
+
+```{r, fig.height=10, fig.width=9}
+gene <- 'FGFBP1'
+FeaturePlot(epithelial, gene, reduction = 'pca_umap', pt.size = 0.1, max.cutoff = 'q95', raster = F,
+                                  cols = c("#f1f1f1", '#7f0000'))
+VlnPlot(epithelial, gene, group.by = 'anno2', pt.size = 0)
+```
+
+
+
+
+
+
+
