@@ -1,1 +1,1 @@
-# Crohn's Disease scATAC seq Analysis
+# Genetic & Epigenetic Analysis for Crohn's Disease
