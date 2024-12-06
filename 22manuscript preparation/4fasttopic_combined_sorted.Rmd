@@ -24,6 +24,11 @@ source('~/yuzhao1/scripts/deg_dep_utils.R')
 out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/4fasttopic_combined/'
 ```
 
+```{r}
+topic_order <- c("k26", "k30", "k24", "k6", "k4", "k38", "k27", "k29", "k34", "k5", "k37", "k43", "k8", "k23", "k17", "k44", "k36", "k13", "k19", "k10", "k45", "k14", "k32", "k35", "k1", "k42", "k15", "k18", "k25", "k28", "k39", "k41", "k12", "k40", "k7", "k3", "k22", "k31", "k33", "k16", "k9", "k2", "k21", "k11", "k20")
+```
+
+
 ##################  ################ ##################  ################
 1. plot topic loadings
 
@@ -75,15 +80,14 @@ df_mean <- df_mean[, -which(colnames(df_mean) == 'group')]
 
 
 ```{r}
-# a sum in a topic is 1
-df <- df_mean
-for (j in 1:ncol(df)) {
-  xx <- df[,j]
-  xx <- xx/sum(xx)
-  xx <- 100*xx
-  df[,j] <- xx
-}
-df_mean <- df
+# # no scaling now
+# df <- df_mean
+# for (j in 1:ncol(df)) {
+#   xx <- df[,j]
+#   # xx <- (xx-mean(xx))/sd(xx)
+#   df[,j] <- xx
+# }
+# df_mean <- df
 
 if(flag.t == 1){
   df_mean <- t(df_mean)
@@ -136,18 +140,36 @@ df_annotation$inflammation[c(7,9)] <- 'Yes'
 # update discrete cell type specific
 df_annotation$Specific <- 'No'
 df_annotation$Specific[topics_calculated_ctSpecific] <- 'Yes'
+```
 
+```{r}
+# re-order annotation
+df_annotation <- df_annotation[topic_order %>% gsub('k', '', .),]
+```
+
+```{r}
 # specify annotation symbols
 anno1 <- mapvalues(df_annotation[,1], c('Yes', 'No'), c(1, NA)) %>% unlist() %>% as.numeric()
 anno2 <- mapvalues(df_annotation[,2], c('Yes', 'No'), c(17, NA)) %>% unlist() %>% as.numeric()
 anno3 <- mapvalues(df_annotation[,3], c('Yes', 'No'), c(5, NA)) %>% unlist() %>% as.numeric()
 
 colors <- c(`1` = "white", `17` = "white", `5` = "white")
+```
+
+
+```{r}
 ha = rowAnnotation(Specific_inflammation_Region = anno_simple(cbind(anno1, anno2, anno3), 
                                                               col = colors, na_col = "white", 
                                                               pch = cbind(anno1, anno2, anno3), 
                                                               gp = gpar(col = "black")))
 ```
+
+```{r}
+# re-order topics
+
+df_mean <- df_mean[topic_order,]
+```
+
 
 ```{r}
 rownames(df_mean) <- rownames(df_mean) %>% gsub('k', '', .)
@@ -157,7 +179,7 @@ library("ggsci")
 library(RColorBrewer)
 color <- brewer.pal(9, 'OrRd')
 
-breaks <- seq(0, 100, length.out = length(color))
+breaks <- seq(0, max(df_mean), length.out = length(color))
 color <- circlize::colorRamp2(breaks, color)
 
 column_ha <- HeatmapAnnotation(foo = anno_text(colnames(df_mean), location = 1, rot = 45, 
@@ -166,7 +188,7 @@ column_ha <- HeatmapAnnotation(foo = anno_text(colnames(df_mean), location = 1, 
 ht1 <- Heatmap(df_mean, right_annotation = ha,
               # column_split = colnames(df_mean) %>% gsub('_Control', '', .) %>% gsub('_CD', '', .) %>% gsub('_inf', '', .),
               row_title = 'Topic ID',
-              name = 'normalized per Topic',
+              name = 'average topic score',
               bottom_annotation = column_ha,
               col = color,
               rect_gp = gpar(col = "black", lwd = 0.5),
@@ -216,9 +238,6 @@ max_TF_adjP_cap <- 30
 cts_noTF <- c()
 TF_clusters <- readRDS('~/yuzhao1/work/atac_gca2024/5TF/2TF_clustering/300clusters.rds')
 
-TFs_topGeneScore <- read.csv('~/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/genes/top250_proteinCoding.csv', row.names = 1)
-colnames(TFs_topGeneScore) <- colnames(TFs_topGeneScore) %>% gsub('k', 'Topic', .)
-
 for (i in 1:45){
   topic_name <- paste0('Topic', i)
   tmp_enr <- TF_df_list[[topic_name]]
@@ -238,9 +257,6 @@ for (i in 1:45){
   if(length(xx) > max_n_TFs_perCt){
     xx <- xx[1:max_n_TFs_perCt]
   }
-  
-  # # decide whether to filter for top gene score
-  # xx <- intersect(TFs_topGeneScore[, topic_name], xx)
 
   # add all TFs that are clustered together
   clusters_significant <- unique(TF_clusters[xx])
@@ -255,9 +271,8 @@ for (i in 1:45){
 
 ```
 
-TF filtering by gene score
+TF filtering by positive regulators
 ```{r}
-# This seems to be filtering too many TFs, will move to gene score
 df_TF_regulator <- readRDS('/project/gca/yuzhao1/work/atac_gca2024/5TF/output/union/regulator_df_anno1_inflammation_status_location_cor0.4_delta0.25.rds')
 TF_positive <- df_TF_regulator[df_TF_regulator$TFRegulator=='Positive', 'cisbp_matchName']
 TFs_selected <- intersect(TF_positive, TFs_selected)
@@ -277,6 +292,10 @@ for (i in 1:nrow(df)) {
 df <- df+0.001 # avoid NA and all zero rows
 ```
 
+```{r}
+# re-order topics
+df <- df[topic_order %>% gsub('k', 'Topic', .),]
+```
 
 ```{r}
 transposed_df <- t(df)
@@ -335,7 +354,7 @@ ht2 <- Heatmap(df,
               use_raster = F)
 
 
-pdf(paste0(out.dir, 'combined_positiveRegulator_temp.pdf'), height = 12, width = 30)
+pdf(paste0(out.dir, 'combined_positiveRegulator_ordered.pdf'), height = 12, width = 30)
 draw(ht1 + ht2, padding = unit(c(.1, .1, .1, .1), "npc"))
 dev.off()
 ```

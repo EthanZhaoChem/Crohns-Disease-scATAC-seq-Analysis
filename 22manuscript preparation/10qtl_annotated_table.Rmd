@@ -33,6 +33,12 @@ snp_annotation$chr_pos <- paste0(snp_annotation$chr, '_', snp_annotation$pos, '_
 qtls_table$hg38_name <- paste0(qtls_table$Chromosome, '_', qtls_table$SNP_position, '_', qtls_table$SNP_position)
 ```
 
+```{r}
+# save for ctwas 
+write.csv(qtls_table, '~/gca/yuzhao1_ctwas/caqtl/caQTLs_hg38_statistics.csv')
+```
+
+
 # clean up row and col names, add QTL snp rsID
 ```{r}
 # clear rownames
@@ -132,7 +138,7 @@ qtls_table$QTL_snp_in_caPeak <- mapvalues(qtls_table$QTL_snp_in_caPeak, c(0,1), 
 qtls_table <- qtls_table[, c("QTL_significant_cellType", "QTL_caPeak", "QTL_snp_name", "QTL_chr", "QTL_snp_pos",
                                            "QTL_snp_rsID", "caPeak_differentially_accessible_celltype", "caPeak_upRegulated_inflamed_vs_control",
                                            "snp_disrupted_motif", "QTL_snp_in_caPeak")]
-write.csv(qtls_table, '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Cell type specific caQTL.csv', row.names = F)
+# write.csv(qtls_table, '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Cell type specific caQTL.csv', row.names = F)
 ```
 
 ```{r}

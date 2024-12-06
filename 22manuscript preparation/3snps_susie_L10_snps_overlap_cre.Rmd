@@ -1,0 +1,454 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(dplyr)
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_snps_overlap_cre/'
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+```
+
+```{r}
+library(readxl)
+filename <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Prioritization of GWAS finemapped SNPs.xlsx'
+sheets <- readxl::excel_sheets(filename)
+x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X,  col_types = 'guess'))
+x <- lapply(x, as.data.frame)
+names(x) <- sheets
+```
+
+
+```{r}
+# 1.1. calculate statistics: in X% of loci (x out of y) at least 50%/25%  of the total PIP is associated with cCRE
+gwas_finemapped <- x$`Clean finemapped SNPs`
+col_pal <- c(gca_colors_peakType, 'cCRE' = '#1f78b4')
+
+# update snp type as a category
+gwas_finemapped$snp_type <- ''
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("inside intron"), 'snp_type'] <- 'Intronic'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("inside exon"), 'snp_type'] <- 'Exonic'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("promoter"), 'snp_type'] <- 'Promoter'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("upstream", "downstream", "close to 3'"), 'snp_type'] <- 'Distal'
+gwas_finemapped[!is.na(gwas_finemapped$overlapped_cCRE), 'snp_type'] <- 'cCRE'
+
+
+# plot stacked bar plot
+df <- gwas_finemapped[, c('finemap_susie_pip', 'locus_position_hg19', 'snp_type')]
+summarized_data <- df %>%
+  dplyr::group_by(snp_type, locus_position_hg19) %>%
+  dplyr::summarise(total_pip = sum(finemap_susie_pip), .groups = "drop")
+
+summarized_data <- summarized_data %>%
+  group_by(locus_position_hg19) %>%
+  mutate(total_pip_locus = sum(total_pip), # Total PIP for SNP type
+         total_pip_proportion = 100 * total_pip / total_pip_locus) %>% # Replace total_pip with proportion
+  ungroup() %>%
+  select(-total_pip_locus)
+
+# factor and order
+summarized_data$snp_type <- factor(summarized_data$snp_type, c('Intronic', 'Promoter', 'Exonic', 'Distal', 'cCRE' ))
+summarized_data_cCRE <- summarized_data[summarized_data$snp_type=='cCRE',]
+locus_order <- summarized_data_cCRE$locus_position_hg19[order(summarized_data_cCRE$total_pip_proportion, decreasing = T)]
+
+# ordered by cCRE proportion first, the loci that don't have cCRE at all are random
+locus_order <- c(locus_order, unique(setdiff(summarized_data$locus_position_hg19, locus_order))) 
+summarized_data$locus_position_hg19 <- factor(summarized_data$locus_position_hg19, locus_order)
+
+# get the cCRE PIP proportion for each locus
+df <- summarized_data[summarized_data$snp_type=='cCRE',]
+nLoci_25 <- sum(df$total_pip_proportion >=25)
+nLoci_50 <- sum(df$total_pip_proportion >=50)
+nLoci <- length(unique(gwas_finemapped$locus_ID))
+paste0(format(100*nLoci_25/nLoci, digits = 2), '%')
+paste0(format(100*nLoci_50/nLoci, digits = 2), '%')
+```
+
+```{r}
+# 1.2. calculate statistics: cCRE pip enrichment vs non
+# fold enrichment: (pip_cCRE/length_cCRE) / (pip_non/length_non), length is genome length (hg38) 
+# calculate p-value based on Xin's advice using Fisher's Exact Test (see rationale below): 
+# Round the total PIP in each of the two groups to an integer. 
+# The total PIP can be thought of the number of causal signals per group. 
+# Compare the two groups: number of causal signals among the total number of variants. 
+
+# consider the length of blacklist region: removing the length of blacklist genome helps make sure that the background is the background in our analysis.
+library(ArchR)
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+genome_blacklist <- getBlacklist(ArchRProj = proj)
+genome_blacklist <- data.frame(genome_blacklist@ranges)
+genome_blacklist_width <- sum(genome_blacklist$width)
+genome_background <- 3.30e9 - genome_blacklist_width
+
+gwas_finemapped <- x$`Clean finemapped SNPs`
+col_pal <- c(gca_colors_peakType, 'cCRE' = '#1f78b4')
+
+# update snp type as a category
+gwas_finemapped$snp_type <- ''
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("inside intron"), 'snp_type'] <- 'Intronic'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("inside exon"), 'snp_type'] <- 'Exonic'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("promoter"), 'snp_type'] <- 'Promoter'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("upstream", "downstream", "close to 3'"), 'snp_type'] <- 'Distal'
+gwas_finemapped[!is.na(gwas_finemapped$overlapped_cCRE), 'snp_type'] <- 'cCRE'
+
+
+# plot stacked bar plot
+df <- gwas_finemapped[, c('finemap_susie_pip', 'locus_position_hg19', 'snp_type')]
+summarized_data <- df %>%
+  dplyr::group_by(snp_type, locus_position_hg19) %>%
+  dplyr::summarise(total_pip = sum(finemap_susie_pip), .groups = "drop")
+
+summarized_data <- summarized_data %>%
+  group_by(locus_position_hg19) %>%
+  mutate(total_pip_locus = sum(total_pip), # Total PIP for SNP type
+         total_pip_proportion = 100 * total_pip / total_pip_locus) %>% # Replace total_pip with proportion
+  ungroup() %>%
+  select(-total_pip_locus)
+
+# factor and order
+summarized_data$snp_type <- factor(summarized_data$snp_type, c('Intronic', 'Promoter', 'Exonic', 'Distal', 'cCRE' ))
+summarized_data_cCRE <- summarized_data[summarized_data$snp_type=='cCRE',]
+locus_order <- summarized_data_cCRE$locus_position_hg19[order(summarized_data_cCRE$total_pip_proportion, decreasing = T)]
+
+# ordered by cCRE proportion first, the loci that don't have cCRE at all are random
+locus_order <- c(locus_order, unique(setdiff(summarized_data$locus_position_hg19, locus_order))) 
+summarized_data$locus_position_hg19 <- factor(summarized_data$locus_position_hg19, locus_order)
+
+# get the cCRE PIP proportion for each locus
+pip_cCRE <- sum(summarized_data[summarized_data$snp_type=='cCRE', 'total_pip'])
+pip_non <- sum(summarized_data[summarized_data$snp_type!='cCRE', 'total_pip'])
+length_cCRE <- 557310*500 # genome length for cCRE
+length_non <- genome_background - 557310*500 # genome length for non-cCRE
+fold_enrichment <- (pip_cCRE/length_cCRE) / (pip_non/length_non)
+print(paste0('fold_enrichment=',fold_enrichment))
+
+# fisher exact test
+signal_cCRE_causal <- round(pip_cCRE)
+signal_cCRE_nonCausal <- sum(!is.na(gwas_finemapped$overlapped_cCRE)) - signal_cCRE_causal
+signal_noncCRE_causal <- round(pip_non)
+signal_noncCRE_nonCausal <- sum(is.na(gwas_finemapped$overlapped_cCRE)) - signal_noncCRE_causal
+
+df_fisher <- data.frame(cCRE=c(signal_cCRE_causal, signal_cCRE_nonCausal),
+                        non=c(signal_noncCRE_causal, signal_noncCRE_nonCausal),
+                        row.names = c('causal', 'nonCausal'))
+df_fisher
+fisher.test(df_fisher)
+```
+
+```{r}
+# 2. multiple pie plot
+# choose the subset of snps to plot
+col_pal <- c(gca_colors_peakType, 'cCRE' = '#1f78b4')
+pair_thresholds <- list(c(0, 0.1),
+                        c(0.1, 0.5),
+                        c(0.5, 1),
+                        c(0,1))
+plot_list <- list()
+for (pair_thre in pair_thresholds){
+  gwas_finemapped <- x$`Clean finemapped SNPs`
+  gwas_finemapped <- gwas_finemapped[gwas_finemapped$finemap_susie_pip > pair_thre[[1]] &
+                                       gwas_finemapped$finemap_susie_pip <= pair_thre[[2]], ]
+  
+  # snps overlapped with cCRE
+  gwas_finemapped_ov <- gwas_finemapped[!is.na(gwas_finemapped$overlapped_cCRE), ]
+  
+  # snps not overlapped with cCRE
+  gwas_finemapped_no <- gwas_finemapped[is.na(gwas_finemapped$overlapped_cCRE), ]
+  
+  # proportion of pips
+  pipSum_all <- sum(gwas_finemapped$finemap_susie_pip)
+  pipSum_cre <- sum(gwas_finemapped_ov$finemap_susie_pip)
+  pipSum_intron <- sum(gwas_finemapped_no[gwas_finemapped_no$snp_location_relative_to_nearest_gene %in% c("inside intron"), 'finemap_susie_pip'])
+  pipSum_exon <- sum(gwas_finemapped_no[gwas_finemapped_no$snp_location_relative_to_nearest_gene %in% c("inside exon"), 'finemap_susie_pip'])
+  pipSum_promoter <- sum(gwas_finemapped_no[gwas_finemapped_no$snp_location_relative_to_nearest_gene %in% c("promoter"), 'finemap_susie_pip'])
+  pipSum_distal <- sum(gwas_finemapped_no[gwas_finemapped_no$snp_location_relative_to_nearest_gene %in% 
+                                              c("upstream", "downstream", "close to 3'" ), 'finemap_susie_pip'])
+  
+  # plot pie graph
+  df <- data.frame(type = c('cCRE', 'Intronic', 'Exonic', 'Promoter', 'Distal'),
+                   proportion = 100 * c(pipSum_cre, pipSum_intron, pipSum_exon, pipSum_promoter, pipSum_distal)/pipSum_all)
+  
+  df <- df %>% mutate(lab.ypos = cumsum(proportion) - 0.5*proportion)    
+  p <- ggplot(df, aes(x = "", y = proportion, fill = type)) +
+    geom_bar(width = 1, stat = "identity", color = "black") +
+    coord_polar("y", start = 0)+
+    geom_text(aes(y = lab.ypos, label = paste0(type, ": ", proportion %>% format(digits = 2), '%')), color = "black")+
+    scale_fill_manual(values = col_pal) +
+    theme_void() +
+    theme(plot.title = element_text(size = 10, hjust = 0.5))+
+    labs(title = paste0('range_', format(pair_thre[[1]], digits = 2), '_', format(pair_thre[[2]], digits = 2)))
+  plot_list[[paste0('range_', format(pair_thre[[1]], digits = 2), '_', format(pair_thre[[2]], digits = 2))]] <- p
+}
+pdf(paste0(out.dir, 'finemapped_snps_pie_range_threshold.pdf'), width = 10, height = 10, pointsize = 1)
+gridExtra::grid.arrange(grobs = plot_list)
+dev.off()
+
+```
+
+
+
+
+
+```{r}
+# 3. stacked bar plot, split by snp type, colored by pip range
+# proportion of same pip range
+# aim a df: sum of pips per category per pip range (0~0.1, 0.1~0.5, 0.5~1)
+gwas_finemapped <- x$`Clean finemapped SNPs`
+col_pal_pip <- c("(0, 0.1]" = '#66c2a4', 
+                 "(0.1, 0.5]" = '#feb24c', 
+                 "(0.5, 1]" = '#ef3b2c')
+
+# update pip range as a category
+gwas_finemapped$pip_range <- ''
+for (i in 1:nrow(gwas_finemapped)) {
+  pip <- gwas_finemapped[i, 'finemap_susie_pip']
+  if(pip <= 0.1){
+     gwas_finemapped[i, 'pip_range'] <- '(0, 0.1]'
+  }
+  else if(pip <= 0.5){
+     gwas_finemapped[i, 'pip_range'] <- '(0.1, 0.5]'
+  }
+  else{
+     gwas_finemapped[i, 'pip_range'] <- '(0.5, 1]'
+  }
+}
+
+# update snp type as a category
+gwas_finemapped$snp_type <- ''
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("inside intron"), 'snp_type'] <- 'Intronic'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("inside exon"), 'snp_type'] <- 'Exonic'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("promoter"), 'snp_type'] <- 'Promoter'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("upstream", "downstream", "close to 3'"), 'snp_type'] <- 'Distal'
+gwas_finemapped[!is.na(gwas_finemapped$overlapped_cCRE), 'snp_type'] <- 'cCRE'
+
+
+# plot stacked bar plot
+df <- gwas_finemapped[, c('finemap_susie_pip', 'pip_range', 'snp_type')]
+summarized_data <- df %>%
+  dplyr::group_by(snp_type, pip_range) %>%
+  dplyr::summarise(total_pip = sum(finemap_susie_pip), .groups = "drop")
+
+summarized_data <- summarized_data %>%
+  group_by(pip_range) %>%
+  mutate(total_pip_pip_range = sum(total_pip), # Total PIP for SNP type
+         total_pip_proportion = 100 * total_pip / total_pip_pip_range) %>% # Replace total_pip with proportion
+  ungroup() %>%
+  select(-total_pip_pip_range)
+
+summarized_data$snp_type <- factor(summarized_data$snp_type, c('Distal', 'Intronic', 'Promoter', 'cCRE', 'Exonic') %>% rev())
+summarized_data$pip_range <- factor(summarized_data$pip_range, c('(0.5, 1]', '(0.1, 0.5]', '(0, 0.1]'))
+
+
+# neighboring bar plot
+pdf(paste0(out.dir, 'finemapped_snps_grouped_bar_pip_proportion_per_pipRange', '.pdf'), width = 6, height = 5, pointsize = 1)
+p <- ggplot(summarized_data, aes(x = snp_type, y = total_pip_proportion, fill = pip_range)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.7) +  # Side-by-side bars
+  scale_fill_manual(values = col_pal_pip)+
+  theme_classic() +
+  theme(
+    panel.grid.major = element_line(linetype="dashed"),
+    panel.grid.minor = element_line(linetype="dashed"),
+    axis.text.x = element_text(angle=45, hjust = 1, vjust = 1, size = 10, face = 'bold', colour = 'black',),
+    axis.text.y = element_text(face = 'bold', colour = 'black',),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 12, face = 'bold', colour = 'black'),
+    plot.title = element_blank(),
+    plot.margin = margin(1,1,1,1,'cm') 
+  )+
+  labs(y = "Proportion (%)")
+print(p)
+dev.off()
+```
+
+```{r}
+# 4. stacked bar plot, split by locus, colored by snp type
+gwas_finemapped <- x$`Clean finemapped SNPs`
+col_pal <- c(gca_colors_peakType, 'cCRE' = '#1f78b4')
+
+# update snp type as a category
+gwas_finemapped$snp_type <- ''
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("inside intron"), 'snp_type'] <- 'Intronic'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("inside exon"), 'snp_type'] <- 'Exonic'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("promoter"), 'snp_type'] <- 'Promoter'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("upstream", "downstream", "close to 3'"), 'snp_type'] <- 'Distal'
+gwas_finemapped[!is.na(gwas_finemapped$overlapped_cCRE), 'snp_type'] <- 'cCRE'
+
+
+# plot stacked bar plot
+df <- gwas_finemapped[, c('finemap_susie_pip', 'locus_position_hg19', 'snp_type')]
+summarized_data <- df %>%
+  dplyr::group_by(snp_type, locus_position_hg19) %>%
+  dplyr::summarise(total_pip = sum(finemap_susie_pip), .groups = "drop")
+
+summarized_data <- summarized_data %>%
+  group_by(locus_position_hg19) %>%
+  mutate(total_pip_locus = sum(total_pip), # Total PIP for SNP type
+         total_pip_proportion = 100 * total_pip / total_pip_locus) %>% # Replace total_pip with proportion
+  ungroup() %>%
+  select(-total_pip_locus)
+
+# factor and order
+summarized_data$snp_type <- factor(summarized_data$snp_type, c('Intronic', 'Promoter', 'Exonic', 'Distal', 'cCRE' ))
+summarized_data_cCRE <- summarized_data[summarized_data$snp_type=='cCRE',]
+locus_order <- summarized_data_cCRE$locus_position_hg19[order(summarized_data_cCRE$total_pip_proportion, decreasing = T)]
+
+# ordered by cCRE proportion first, the loci that don't have cCRE at all are random
+locus_order <- c(locus_order, unique(setdiff(summarized_data$locus_position_hg19, locus_order))) 
+summarized_data$locus_position_hg19 <- factor(summarized_data$locus_position_hg19, locus_order)
+
+pdf(paste0(out.dir, 'finemapped_snps_stacked_bar_pip_proportion_locus', '.pdf'), width = 8, height = 5, pointsize = 1)
+p <- ggplot(summarized_data, aes(x = locus_position_hg19, y = total_pip_proportion, fill = snp_type)) +
+  geom_col(alpha = 0.9, width = 0.7) +
+  scale_fill_manual(values = col_pal)+
+  theme_classic() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 5),
+    axis.text.y = element_text(face = 'bold', colour = 'black',),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 12, face = 'bold', colour = 'black'),
+    plot.title = element_blank(),
+    plot.margin = margin(1,1,1,1,'cm') 
+  )+
+  labs(y = "Proportion (%)")
+print(p)
+dev.off()
+
+```
+
+
+
+
+```{r}
+# 5. stacked bar plot, split by snp type, colored by snp type, not included in figures
+# proportion of same snp type
+# aim a df: sum of pips per category per pip range (0~0.1, 0.1~0.5, 0.5~1)
+gwas_finemapped <- x$`Clean finemapped SNPs`
+col_pal_pip <- c("(0, 0.1]" = '#66c2a4', 
+                 "(0.1, 0.5]" = '#feb24c', 
+                 "(0.5, 1]" = '#ef3b2c')
+
+# update pip range as a category
+gwas_finemapped$pip_range <- ''
+for (i in 1:nrow(gwas_finemapped)) {
+  pip <- gwas_finemapped[i, 'finemap_susie_pip']
+  if(pip <= 0.1){
+     gwas_finemapped[i, 'pip_range'] <- '(0, 0.1]'
+  }
+  else if(pip <= 0.5){
+     gwas_finemapped[i, 'pip_range'] <- '(0.1, 0.5]'
+  }
+  else{
+     gwas_finemapped[i, 'pip_range'] <- '(0.5, 1]'
+  }
+}
+
+# update snp type as a category
+gwas_finemapped$snp_type <- ''
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("inside intron"), 'snp_type'] <- 'Intronic'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("inside exon"), 'snp_type'] <- 'Exonic'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("promoter"), 'snp_type'] <- 'Promoter'
+gwas_finemapped[gwas_finemapped$snp_location_relative_to_nearest_gene %in% c("upstream", "downstream", "close to 3'"), 'snp_type'] <- 'Distal'
+gwas_finemapped[!is.na(gwas_finemapped$overlapped_cCRE), 'snp_type'] <- 'cCRE'
+
+
+# prepare proportion
+df <- gwas_finemapped[, c('finemap_susie_pip', 'pip_range', 'snp_type')]
+summarized_data <- df %>%
+  dplyr::group_by(snp_type, pip_range) %>%
+  dplyr::summarise(total_pip = sum(finemap_susie_pip), .groups = "drop")
+
+summarized_data <- summarized_data %>%
+  group_by(snp_type) %>%
+  mutate(total_pip_snp_type = sum(total_pip), # Total PIP for SNP type
+         total_pip_proportion = 100 * total_pip / total_pip_snp_type) %>% # Replace total_pip with proportion
+  ungroup() %>%
+  select(-total_pip_snp_type)
+
+summarized_data$snp_type <- factor(summarized_data$snp_type, c('Distal', 'Intronic', 'Promoter', 'cCRE', 'Exonic') %>% rev())
+summarized_data$pip_range <- factor(summarized_data$pip_range, c('(0.5, 1]', '(0.1, 0.5]', '(0, 0.1]'))
+
+
+# stacked bar plot
+pdf(paste0(out.dir, 'finemapped_snps_stacked_bar_pip_proportion_per_SNPtype', '.pdf'), width = 4.5, height = 5, pointsize = 1)
+p <- ggplot(summarized_data, aes(x = snp_type, y = total_pip_proportion, fill = pip_range)) +
+  geom_col(alpha = 0.9, width = 0.5) +
+  scale_fill_manual(values = col_pal_pip)+
+  theme_classic() +
+  theme(
+    panel.grid.major = element_line(linetype="dashed"),
+    panel.grid.minor = element_line(linetype="dashed"),
+    # axis.text.x = element_text(size = 10, face = 'bold', colour = 'black', angle = 90, hjust = 1, vjust = 0.5),
+    axis.text.x = element_text(angle=45, hjust = 1, vjust = 1, size = 10, face = 'bold', colour = 'black',),
+    axis.text.y = element_text(face = 'bold', colour = 'black',),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 12, face = 'bold', colour = 'black'),
+    plot.title = element_blank(),
+    plot.margin = margin(1,1,1,1,'cm') 
+  )+
+  labs(y = "Proportion (%)")
+print(p)
+dev.off()
+
+# neighboring bar plot
+pdf(paste0(out.dir, 'finemapped_snps_grouped_bar_pip_proportion_per_SNPtype', '.pdf'), width = 6, height = 5, pointsize = 1)
+p <- ggplot(summarized_data, aes(x = snp_type, y = total_pip_proportion, fill = pip_range)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.7) +  # Side-by-side bars
+  scale_fill_manual(values = col_pal_pip)+
+  theme_classic() +
+  theme(
+    panel.grid.major = element_line(linetype="dashed"),
+    panel.grid.minor = element_line(linetype="dashed"),
+    # axis.text.x = element_text(size = 10, face = 'bold', colour = 'black', angle = 90, hjust = 1, vjust = 0.5),
+    axis.text.x = element_text(angle=45, hjust = 1, vjust = 1, size = 10, face = 'bold', colour = 'black',),
+    axis.text.y = element_text(face = 'bold', colour = 'black',),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 12, face = 'bold', colour = 'black'),
+    plot.title = element_blank(),
+    plot.margin = margin(1,1,1,1,'cm') 
+  )+
+  labs(y = "Proportion (%)")
+print(p)
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

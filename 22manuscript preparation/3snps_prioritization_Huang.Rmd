@@ -1,0 +1,97 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_Huang/'
+```
+
+# 1. read Huang et al. Nature 2017
+```{r}
+########################## read published results (nature 2017) ####################
+credibleSets <- read.table('~/yuzhao1/work/final_GCAatac/12snps/1nature2017cs/nature2017cs.csv', sep = ',', header = T)
+gwas_finemapped <- read.table('~/yuzhao1/work/final_GCAatac/12snps/1nature2017cs/snps.csv', sep = ',', header = T)
+gwas_finemapped <- gwas_finemapped[!is.na(gwas_finemapped$chr),] # remove NA rows based on chr
+
+# there is an error in the gwas_finemapped (rs3838334 should be in TNFSF8, remove the wrong one)
+gwas_finemapped <- gwas_finemapped[!(gwas_finemapped$variant == 'rs3838334' & gwas_finemapped$Gene.refGene != 'TNFSF8'),]
+rownames(gwas_finemapped) <- gwas_finemapped$variant
+
+# create a signal ID (154 signals in 94 loci)
+gwas_finemapped$signal_ID <- paste0(gwas_finemapped$HD, '_', gwas_finemapped$signal) 
+```
+
+# 2. annotate p value based on de lange ss
+
+```{r}
+# read de lange gwas ss for p value (Haung didn't provide it)
+gwas <- readRDS('~/yuzhao1/work/final_GCAatac/8susie/results/gwas_processed.rds')
+gwas_sub <- gwas[gwas$snp %in% gwas_finemapped$variant,]
+gwas_finemapped$p_value_DeLange <- mapvalues(gwas_finemapped$variant, gwas_sub$snp, gwas_sub$pval, warn_missing = F)
+gwas_finemapped[which(grepl('rs', gwas_finemapped$p_value_DeLange)), 'p_value_DeLange'] <- 'NA'
+gwas_finemapped[which(grepl('imm', gwas_finemapped$p_value_DeLange)), 'p_value_DeLange'] <- 'NA'
+gwas_finemapped$p_value_DeLange <- as.numeric(gwas_finemapped$p_value_DeLange)
+```
+
+# 3. overlapped snps and co-active gene
+
+
+```{r}
+# cell type peak, FDR 0.1, FC 0.5
+dir_celltype_bed <- '~/yuzhao1/work/atac_gca2024/4peaks/DARs/healthy_union_anno1_peaks/FDR0_1FC0_5/'
+celltypes <- list.files(dir_celltype_bed) %>% gsub('.bed', '', .)
+celltypes <- setdiff(celltypes, "all_celltype_Specific")
+nOverlaps_celltype <- list()
+for (ct in celltypes) {
+  filename <- paste0(dir_celltype_bed, ct, '.bed')
+  tmp <- read.table(filename, sep='\t', header = F)
+  gr_peaks <- GRanges(seqnames = tmp$V1, ranges = IRanges(start = tmp$V2, end = tmp$V3))
+  
+  overlaps <- GenomicRanges::findOverlaps(gr_gwas, gr_peaks, ignore.strand = T)
+  overlapped_gwas <- gwas_finemapped[overlaps@from, ]
+  overlapped_cCRE_celltypes <- tmp[overlaps@to, ]
+  nOverlaps_celltype[[ct]] <- nrow(overlapped_gwas)
+  
+  # extra info
+  gwas_finemapped$overlapped_cCRE_celltype[overlaps@from] <- paste0(gwas_finemapped$overlapped_cCRE_celltype[overlaps@from], '-', ct)
+}
+gwas_finemapped$overlapped_cCRE_celltype <- sub('^-', '', gwas_finemapped$overlapped_cCRE_celltype) # remove prefix -
+nOverlaps_celltype <- unlist(nOverlaps_celltype)
+nOverlaps_celltype <- nOverlaps_celltype[names(gca_colors_atac_union_anno1)]
+nOverlaps_celltype
+```
+
+
+```{r}
+df <- data.frame('celltype' = names(nOverlaps_celltype),
+                 'n_snps' = nOverlaps_celltype)
+rownames(df) <- df$celltype
+df$celltype <- factor(df$celltype, levels = df$celltype)
+```
+
+
+
+```{r}
+write.csv(gwas_finemapped, paste0(out.dir, 'gwas_finemapped.csv'))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,38 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r, include = F, eval=F}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_Finucane/'
+```
+
+# good to see what Finucane did for IBD finemapping
+```{r}
+gwas_Finucane <- read.table('/home/yuzhao1/yuzhao1/work/atac_gca2024/27ukbb_94traits_release1.1/UKBB_94traits_release1.bed', header = F, sep = '\t')
+gwas_Finucane_cols <- read.table('/home/yuzhao1/yuzhao1/work/atac_gca2024/27ukbb_94traits_release1.1/UKBB_94traits_release1.cols', header = F, sep = '\t')
+colnames(gwas_Finucane) <- gwas_Finucane_cols$V1
+View(gwas_Finucane[gwas_Finucane$trait == 'IBD' & gwas_Finucane$method == 'SUSIE',])
+```
+
+```{r}
+gwas_sub <- gwas_Finucane[gwas_Finucane$trait == 'IBD' & gwas_Finucane$method == 'SUSIE',]
+write.csv(gwas_sub, paste0(out.dir, 'Finucane_IBD_susie.csv'))
+```
+

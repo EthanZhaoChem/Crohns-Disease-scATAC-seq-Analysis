@@ -20,6 +20,16 @@ snp_annotation <- read.csv('~/yuzhao1/work/atac_gca2024/24rasqual2/2annotateRSid
 ```
 
 ```{r}
+# find snps prioritized in both
+gwas_finemapped_1kg <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/1kg/gwas_finemapped_annotated2.csv', row.names = 1)
+gwas_finemapped_ukbb <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/ukbb/gwas_finemapped_annotated2.csv', row.names = 1)
+xx1 <- gwas_finemapped_1kg[gwas_finemapped_1kg$susie_pip >= 0.2, 'snp']
+xx2 <- gwas_finemapped_ukbb[gwas_finemapped_ukbb$susie_pip >= 0.2, 'snp']
+snps_both_prioritized <- intersect(xx1, xx2)
+```
+
+
+```{r}
 # read GWAS supp table
 library(readxl)
 filename <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/Prioritization of GWAS finemapped SNPs.xlsx'
@@ -27,7 +37,7 @@ sheets <- readxl::excel_sheets(filename)
 x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X,  col_types = 'guess'))
 x <- lapply(x, as.data.frame)
 names(x) <- sheets
-gwas_prioritized_table1 <- x$`All GWAS finemapped SNPs`
+gwas_prioritized_table1 <- x$`Clean finemapped SNPs`
 gwas_prioritized_table2 <- x$`QTL overlapping details`
 rownames(gwas_prioritized_table1) <- gwas_prioritized_table1$GWAS_snp
 ```
@@ -37,18 +47,18 @@ rownames(gwas_prioritized_table1) <- gwas_prioritized_table1$GWAS_snp
 pip_top_threshold <- 0.2
 df <- gwas_prioritized_table1[which(gwas_prioritized_table1$finemap_susie_pip >= pip_top_threshold &
                                       gwas_prioritized_table1$overlapped_cCRE !='' &
-                                      gwas_prioritized_table1$Affected_by_HLA == 'No'),]
+                                      gwas_prioritized_table1$Affected_by_HLA == 'No' &
+                                      gwas_prioritized_table1$GWAS_snp %in% snps_both_prioritized),]
 df <- df[order(df$finemap_susie_pip, decreasing = T),]
 df$finemap_susie_pip <- format(df$finemap_susie_pip, digits=2) %>% as.numeric()
 df$snp_nearest_gene_distance <- as.numeric(df$snp_nearest_gene_distance)
-df_prioritized <- data.frame(matrix('', nrow = nrow(df), ncol = 12))
-colnames(df_prioritized) <- c('rsID', 'Chromosome', 'Position', 'PIP', 'cCRE', 'Associated gene', 'Link method',  'Celltype specific', 'iDAR', 'Known IBD risk Gene', 'finemapped_with_ukbb', 'Reference [PMID]')
+df_prioritized <- data.frame(matrix('', nrow = nrow(df), ncol = 11))
+colnames(df_prioritized) <- c('rsID', 'Chromosome', 'Position', 'PIP', 'cCRE', 'Associated gene', 'Link method',  'Celltype specific', 'iDAR', 'Known IBD risk Gene', 'Reference [PMID]')
 
 for (i in 1:nrow(df)) {
   df_prioritized[i, 'rsID'] <- df[i, 'GWAS_snp']
   df_prioritized[i, 'Chromosome'] <- df[i, 'Chromosome']
   df_prioritized[i, 'Position'] <- df[i, 'Position']
-  df_prioritized[i, 'finemapped_with_ukbb'] <- df[i, 'finemapped_with_ukbb']
   df_prioritized[i, 'PIP'] <- df[i, 'finemap_susie_pip']
   df_prioritized[i, 'cCRE'] <- df[i, 'overlapped_cCRE'] %>% sub("_", ":", .) %>% sub("_", "-", .)
   df_prioritized[i, 'Celltype specific'] <- ifelse(is.na(df[i, 'overlapped_cCRE_differentially_upRegulated_celltype']), '', 'Y')
@@ -66,7 +76,8 @@ for (i in 1:nrow(df)) {
     next
   }
   
-  if(df[i, 'snp_nearest_gene_distance'] < 20000){
+  # i loosened this criteria
+  if(df[i, 'snp_nearest_gene_distance'] < 99999999){
     df_prioritized[i, 'Associated gene'] <- df[i, 'snp_nearest_gene_name']
     df_prioritized[i, 'Link method'] <- 'Nearest'
     next

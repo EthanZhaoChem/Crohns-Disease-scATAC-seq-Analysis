@@ -11,14 +11,21 @@ library(dplyr)
 library(plyr)
 library(stringr)
 source('~/yuzhao1/scripts/plot.R')
-```
-
-```{r, include = F, eval=F}
 source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
 source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
 source('~/yuzhao1/work/atac_gca2024/22abc/helper_abc.R')
 out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/11snps_ct_specificity/'
 ```
+
+```{r}
+# find snps prioritized in both
+gwas_finemapped_1kg <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/1kg/gwas_finemapped_annotated2.csv', row.names = 1)
+gwas_finemapped_ukbb <- read.csv('~/yuzhao1/work/atac_gca2024/0manu/plots/3snps_susie_L10_prioritization/ukbb/gwas_finemapped_annotated2.csv', row.names = 1)
+xx1 <- gwas_finemapped_1kg[gwas_finemapped_1kg$susie_pip >= 0.2, 'snp']
+xx2 <- gwas_finemapped_ukbb[gwas_finemapped_ukbb$susie_pip >= 0.2, 'snp']
+snps_both_prioritized <- intersect(xx1, xx2)
+```
+
 
 ```{r}
 # modify table1 only
@@ -42,7 +49,8 @@ gwas_top <- gwas_prioritized_table1[gwas_prioritized_table1$finemap_susie_pip >=
 # top snps overlapping cCREs
 gwas_top_ct <- gwas_prioritized_table1[gwas_prioritized_table1$finemap_susie_pip >= pip_top_threshold &
                                       !is.na(gwas_prioritized_table1$overlapped_cCRE_differentially_upRegulated_celltype) &
-                                      gwas_prioritized_table1$Affected_by_HLA == 'No',] 
+                                      gwas_prioritized_table1$Affected_by_HLA == 'No' &
+                                        gwas_prioritized_table1$GWAS_snp %in% snps_both_prioritized,] 
 ```
 
 ```{r}
@@ -63,7 +71,7 @@ for (snp in snps_all) {
 ```{r}
 library(ComplexHeatmap)
 pips <- gwas_prioritized_table1[rownames(df), 'finemap_susie_pip']
-ha <- rowAnnotation(xx=anno_text(pips %>% format(., digits = 2) %>% as.character()), annotation_name_rot = 0)
+ha <- rowAnnotation(bar = anno_barplot(pips))
 
 # library(viridis)
 # col_fun = colorRamp2(seq(0, 1, 0.01), viridis(101, option = 'mako') %>% rev())
@@ -87,7 +95,7 @@ ht <- Heatmap(df,
               show_heatmap_legend = F,
               use_raster = F,
               right_annotation = ha)
-pdf(paste0(out.dir, 'snps_ct_heatmap_pip_', pip_top_threshold, '.pdf'), height = 8, width = 6.3)
+pdf(paste0(out.dir, 'snps_ct_heatmap_pip_', pip_top_threshold, '.pdf'), height = 6.6, width = 6.3)
 draw(ht, padding = unit(c(.1, .1, .1, .1), "npc"))
 dev.off()
 ```
