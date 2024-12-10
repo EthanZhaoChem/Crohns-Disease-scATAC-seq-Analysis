@@ -1,0 +1,94 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(fastTopics)
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r}
+source('~/yuzhao1/work/atac_gca2024/scripts/gca_colors.R')
+source('~/yuzhao1/work/final_GCArna/scripts/gca_markers.R')
+source('~/yuzhao1/scripts/deg_dep_utils.R')
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/'
+```
+
+##################  ################ ##################  ################
+3. plot TF score for each topic
+
+```{r}
+# read excel to list of dataframes: TF_df_list
+library(readxl)    
+filename <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/union_sub100_k45/enriched_motif_from_daPeaks_vsnull_positive_sub100_k_45_top5k.xlsx'
+sheets <- readxl::excel_sheets(filename)
+x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X))
+x <- lapply(x, as.data.frame)
+names(x) <- sheets
+TF_df_list <- x
+rm(x)
+names(TF_df_list) <- strsplit(names(TF_df_list), split = '_', fixed=T) %>% sapply(.,`[[`,1)
+
+# initialize a df
+TFs_names <- TF_df_list$Topic1$feature %>% strsplit(., split = '_', fixed=T) %>% sapply(.,`[[`,1)
+```
+
+extract m_adjlogp to a df
+```{r}
+TF_df_all <- as.data.frame(matrix(0, nrow = 870, ncol = 45*2))
+
+for (topic_id in 1:45){
+  topic_name <- paste0('Topic', topic_id)
+  colnames(TF_df_all)[[2*topic_id-1]] <- paste0('Topic', topic_id, '_TF')
+  colnames(TF_df_all)[[2*topic_id]] <- paste0('Topic', topic_id, '_enrichment_mlog10Padj')
+  
+  tmp_enr <- TF_df_list[[topic_name]]
+  tmp_enr$feature <- tmp_enr$feature %>% strsplit(., split = '_', fixed=T) %>% sapply(.,`[[`,1)
+  rownames(tmp_enr) <- tmp_enr$feature 
+  tmp_enr <- tmp_enr[order(tmp_enr$mlog10Padj, decreasing = T), ]
+  
+  TF_df_all[,2*topic_id-1] <- tmp_enr$feature
+  TF_df_all[,2*topic_id] <- tmp_enr[, 'mlog10Padj']
+}
+```
+
+TF filtering by positive regulators
+```{r}
+df_TF_regulator <- readRDS('/project/gca/yuzhao1/work/atac_gca2024/5TF/output/union/regulator_df_anno1_inflammation_status_location_cor0.4_delta0.25.rds')
+TF_positive <- df_TF_regulator[df_TF_regulator$TFRegulator=='Positive', 'cisbp_matchName']
+```
+
+```{r}
+# prepare table
+library(openxlsx)
+df_top1k_proteinCoding <- read.csv('~/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/genes/top1k_proteinCoding.csv', row.names = 1)
+
+xx <- list('top1k_proteinCoding_gene' = df_top1k_proteinCoding, 
+           'TF enrichment' = TF_df_all,
+           'positive TF regulator' = TF_positive)
+write.xlsx(xx, overwrite = T,
+           file = paste0('~/yuzhao1/work/atac_gca2024/0manu/supplementary_table/',
+                         'Top genes and TFs in each topic.xlsx'))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

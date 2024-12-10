@@ -152,7 +152,7 @@ p <- ggplot(df, aes(x=ncells, y=caQTLs)) +
         legend.position = "bottom") +
   labs(title = '', x = "number of cells", y = "number of caQTLs")
 
-pdf(paste0(out.dir, 'cor_ncells_nQTLs.pdf'), height = 3, width = 3)
+pdf(paste0(out.dir, 'cor_ncells_nQTLs', '_rho ',rho, 'p', p.plot, '.pdf'), height = 3, width = 3)
 print(p)
 dev.off()
 ```

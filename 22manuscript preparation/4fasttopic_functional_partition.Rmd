@@ -1,0 +1,89 @@
+---
+title: "Raw data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results='hide', message=FALSE, warning=FALSE, fig.height = 7, fig.width = 7)
+dyn.load('/software/geos-3.9.1-el8-x86_64/lib64/libgeos_c.so')
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(stringr)
+library(Seurat)
+library(ArchR)
+library(fastTopics)
+
+source('~/yuzhao1/scripts/plot.R')
+```
+
+```{r}
+out.dir <- '~/yuzhao1/work/atac_gca2024/0manu/plots/4fasttopic_funnctional_partition/'
+```
+
+##################  ################ ##################  ################
+1. plot topic loadings
+
+```{r}
+path_model_union <- '~/yuzhao1/work/atac_gca2024/13fasttopic/rds/fit_union_sub100_k45_converged.rds'
+```
+
+```{r}
+lineage <- 'union'
+nTopics <- 45
+model_path <- path_model_union
+metadata1 <- as.data.frame(proj@cellColData)
+proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1_subSampling_max100/")
+peak_metadata <- data.frame(proj@peakSet)
+rownames(peak_metadata) <- paste0(peak_metadata$seqnames, '_', peak_metadata$start, '_', peak_metadata$end)
+```
+
+```{r}
+fit <- readRDS(model_path)
+fit <- poisson2multinom(fit)
+
+# make sure the cell names are in the correct order
+metadata1 <- metadata1[rownames(fit$L),]
+# saveRDS(metadata1, '~/gca/yuzhao1_topic/metadata.rds')
+# matrix export
+peak_topic_mtx <- fit$F # all peaks in one topic sum to 1
+cell_topic_mtx <- fit$L # all topics in one cell sum to 1
+```
+
+```{r}
+da_peaks <- list()
+daPeaks.dir <- '~/yuzhao1/work/atac_gca2024/13fasttopic/plots/union_sub100_k45/daPeaks_positive_flexibleLpval30k_vsnull/'
+for (i in 1:45){
+  df <- read.table(paste0(daPeaks.dir, 'daPeaks_Topic', i, '.bed'))
+  da_peaks[[i]] <- paste0(df$V1, '_', df$V2, '_', df$V3)
+}
+```
+
+```{r}
+df <- data.frame(matrix(0, 45, 4))
+rownames(df) <- paste0('Topic', 1:45)
+colnames(df) <- c("Distal", "Promoter", "Exonic", "Intronic")
+for (i in 1:45) {
+  peaks <- da_peaks[[i]]
+  peak_types <- peak_metadata[peaks, 'peakType']
+  peak_types_table <- table(peak_types) %>% data.frame()
+  rownames(peak_types_table) <- peak_types_table$peak_types
+  peaks_sum <- sum(peak_types_table$Freq)
+  for (tmp.type in c("Distal", "Promoter", "Exonic", "Intronic")) {
+    df[i, tmp.type] <- peak_types_table[tmp.type, 'Freq']/peaks_sum
+  }
+}
+```
+
+```{r}
+write.csv(df, paste0(out.dir, 'peaktype.csv'))
+```
+
+
+
+
+
+
+
+
+

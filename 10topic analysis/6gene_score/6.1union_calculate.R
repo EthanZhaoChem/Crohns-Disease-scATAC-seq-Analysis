@@ -25,25 +25,26 @@ source('~/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/helper_gene_gsea.R')
 
 dir.pathway <- '~/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/pathways/'
 ############################# gene reference ###############################
-proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
-txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
-OrgDb <- org.Hs.eg.db
-keytypes(org.Hs.eg.db)
-genes_all <- getGeneAnnotation(proj)
-genes_all <- genes_all$genes
-genes_all <- genes_all[!is.na(genes_all$symbol)]
-genes_annoType <- get_gene_annotations(txdb, OrgDb, columns_extract = c("SYMBOL", "ENSEMBL", "GENETYPE"), single.strand.genes.only = F)
-genes_all$GENETYPE <- mapvalues(genes_all$symbol, genes_annoType$SYMBOL, genes_annoType$GENETYPE, warn_missing = F)
-
-genes_df <- data.frame(chr = seqnames(genes_all),
-                       start = start(genes_all),
-                       end = end(genes_all), 
-                       strand = strand(genes_all),
-                       GeneID = genes_all$symbol,
-                       GENETYPE = genes_all$GENETYPE)
-genes_df <- genes_df[genes_df$GENETYPE=='protein-coding', ]
-
+# proj <- loadArchRProject(path = "~/yuzhao1/work/atac_gca2024/0dataset/5kmin_6TSS_DoubletRatio2_filtered1/")
+# txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+# OrgDb <- org.Hs.eg.db
+# keytypes(org.Hs.eg.db)
+# genes_all <- getGeneAnnotation(proj)
+# genes_all <- genes_all$genes
+# genes_all <- genes_all[!is.na(genes_all$symbol)]
+# genes_annoType <- get_gene_annotations(txdb, OrgDb, columns_extract = c("SYMBOL", "ENSEMBL", "GENETYPE"), single.strand.genes.only = F)
+# genes_all$GENETYPE <- mapvalues(genes_all$symbol, genes_annoType$SYMBOL, genes_annoType$GENETYPE, warn_missing = F)
+# 
+# genes_df <- data.frame(chr = seqnames(genes_all),
+#                        start = start(genes_all),
+#                        end = end(genes_all), 
+#                        strand = strand(genes_all),
+#                        GeneID = genes_all$symbol,
+#                        GENETYPE = genes_all$GENETYPE)
+# genes_df <- genes_df[genes_df$GENETYPE=='protein-coding', ]
+# 
 # write.csv(genes_df, '/project/gca/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/protein_coding_genes.csv')
+genes_df <- read.csv('/project/gca/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/protein_coding_genes.csv', row.names = 1)
 
 ############################# gene score ######################################
 nTopics <- 45
@@ -76,7 +77,18 @@ for(topic_id in 1:nTopics){
 }
   
 # write.csv(df_topGenes, '~/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/genes/top250_proteinCoding.csv')
-  
+
+# for supplementary table
+df_topGenes <- data.frame(matrix(0, nrow = 1000, ncol = nTopics * 2))
+for(topic_id in 1:nTopics){
+  colnames(df_topGenes)[[2*topic_id-1]] <- paste0('Topic', topic_id, '_Gene')
+  colnames(df_topGenes)[[2*topic_id]] <- paste0('Topic', topic_id, '_GeneScore')
+  xx <- df_gene_scores[, paste0('k', topic_id)]
+  df_topGenes[, 2*topic_id-1] <- rownames(df_gene_scores)[order(xx, decreasing = T)[1:1000]]
+  df_topGenes[, 2*topic_id] <- xx[order(xx, decreasing = T)[1:1000]]
+}
+write.csv(df_topGenes, '~/yuzhao1/work/atac_gca2024/13fasttopic/6gene_score/genes/top1k_proteinCoding.csv')
+
 
 ############################### pathway ###################################
 cat(paste0('working on ', topic_id_pathway, '\n'))
